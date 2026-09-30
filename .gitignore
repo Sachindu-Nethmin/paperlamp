@@ -1,0 +1,11 @@
+# job folders hold uploaded papers, voice audio and rendered videos
+jobs/
+# local paths (voice reference, python env) — see config.example.json
+config.json
+__pycache__/
+*.pyc
+.DS_Store
+*.wav
+*.aiff
+*.mp4
+*.pdf

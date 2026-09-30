@@ -1,0 +1,5 @@
+# core (the tool itself uses only these + the Python standard library)
+numpy
+pillow
+# system tools: brew install poppler ffmpeg ; Ollama from https://ollama.com (models run locally)
+# optional voice cloning, in a separate env:  pip install chatterbox-tts "setuptools<81"

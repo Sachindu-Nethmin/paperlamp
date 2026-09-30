@@ -1,0 +1,773 @@
+{
+ "meta": {
+  "title": "On the Use of Agentic Coding: An Empirical Study of Pull Requests on GitHub",
+  "authors": [
+   "Miku Watanabe",
+   "Hao Li",
+   "Yutaro Kashiwa",
+   "Brittany Reid",
+   "Hajimu Iida",
+   "Ahmed E. Hassan"
+  ],
+  "venue": "ACM TOSEM",
+  "year": "2025",
+  "one_line": "An empirical study of 567 pull requests created with Claude Code across 157 projects."
+ },
+ "chapters": [
+  {
+   "key": "B01_hook",
+   "title": "Intro",
+   "sentences": [
+    {
+     "text": "An AI coding agent's pull requests touched documentation 22.1% of the time. For human developers, 14.0%.",
+     "spoken": "An AI coding agent's pull requests touched documentation twenty-two point one percent of the time. For human developers, fourteen percent."
+    },
+    {
+     "text": "That's from a study of 567 agent pull requests on real open-source projects, compared with 567 written by humans.",
+     "spoken": "That's from a study of five hundred and sixty-seven agent pull requests on real open-source projects, compared with five hundred and sixty-seven written by humans."
+    },
+    {
+     "text": "Bug fixes and new features? Agents and humans did those at almost the same rate.",
+     "spoken": "Bug fixes and new features? Agents and humans did those at almost the same rate."
+    },
+    {
+     "text": "The differences were elsewhere: refactoring, tests, and documentation.",
+     "spoken": "The differences were elsewhere: refactoring, tests, and documentation."
+    },
+    {
+     "text": "And when agent pull requests were revised before merging, documentation was the second most common thing that got fixed.",
+     "spoken": "And when agent pull requests were revised before merging, documentation was the second most common thing that got fixed."
+    },
+    {
+     "text": "In this video we'll go through the whole paper: how the data was collected, how every pull request was classified, the statistics behind each comparison, and what the authors say their study can't show.",
+     "spoken": "In this video we'll go through the whole paper: how the data was collected, how every pull request was classified, the statistics behind each comparison, and what the authors say their study can't show."
+    },
+    {
+     "text": "We'll use the paper's own figures and tables, and the formulas behind the numbers.",
+     "spoken": "We'll use the paper's own figures and tables, and the formulas behind the numbers."
+    }
+   ]
+  },
+  {
+   "key": "B02_paper",
+   "title": "The paper and its four questions",
+   "sentences": [
+    {
+     "text": "This is a peer-reviewed study accepted at ACM Transactions on Software Engineering and Methodology.",
+     "spoken": "This is a peer-reviewed study, accepted at the A.C.M. Transactions on Software Engineering and Methodology."
+    },
+    {
+     "text": "It's by six researchers from Japan's Nara Institute of Science and Technology and Queen's University in Canada, led by Miku Watanabe.",
+     "spoken": "It's by six researchers from Japan's Nara Institute of Science and Technology and Queen's University in Canada, led by Miku Watanabe."
+    },
+    {
+     "text": "The paper is published under a Creative Commons Attribution license, which is why you'll see its real figures on screen, credited in the corner.",
+     "spoken": "The paper is published under a Creative Commons Attribution license, which is why you'll see its real figures on screen, credited in the corner."
+    },
+    {
+     "text": "The paper asks four research questions.",
+     "spoken": "The paper asks four research questions."
+    },
+    {
+     "text": "RQ1: how do agent pull requests differ from human ones, in size and in purpose?",
+     "spoken": "R Q one: how do agent pull requests differ from human ones, in size and in purpose?"
+    },
+    {
+     "text": "RQ2: how often are agent pull requests rejected, and why?",
+     "spoken": "R Q two: how often are agent pull requests rejected, and why?"
+    },
+    {
+     "text": "RQ3: how many are accepted without any revisions, and when revisions are needed, how big are they?",
+     "spoken": "R Q three: how many are accepted without any revisions, and when revisions are needed, how big are they?"
+    },
+    {
+     "text": "And RQ4: what do reviewers change in agent pull requests before merging them?",
+     "spoken": "And R Q four: what do reviewers change in agent pull requests before merging them?"
+    }
+   ]
+  },
+  {
+   "key": "B03_background",
+   "title": "What is agentic coding?",
+   "sentences": [
+    {
+     "text": "First, some background. What is agentic coding?",
+     "spoken": "First, some background. What is agentic coding?"
+    },
+    {
+     "text": "The paper defines it as the use of autonomous AI agents to generate, modify and submit code.",
+     "spoken": "The paper defines it as the use of autonomous AI agents to generate, modify and submit code."
+    },
+    {
+     "text": "It contrasts this with prompt-based workflows, sometimes called vibe coding, where a developer guides the AI step by step.",
+     "spoken": "It contrasts this with prompt-based workflows, sometimes called vibe coding, where a developer guides the AI step by step."
+    },
+    {
+     "text": "An agent can plan, execute, test and iterate on a task with minimal human intervention.",
+     "spoken": "An agent can plan, execute, test and iterate on a task with minimal human intervention."
+    },
+    {
+     "text": "Earlier studies looked at chatbots like ChatGPT. One manually analyzed 527 commits, 327 pull requests and 647 issues, and found developers using ChatGPT for 45 distinct kinds of tasks.",
+     "spoken": "Earlier studies looked at chatbots like ChatGPT. One manually analyzed five hundred and twenty-seven commits, three hundred and twenty-seven pull requests and six hundred and forty-seven issues, and found developers using ChatGPT for forty-five distinct kinds of tasks."
+    },
+    {
+     "text": "Another found that 30.7% of AI-generated suggestions in code reviews were met with skepticism or disagreement.",
+     "spoken": "Another found that thirty point seven percent of AI-generated suggestions in code reviews were met with skepticism or disagreement."
+    },
+    {
+     "text": "But to the authors' knowledge, no prior work had studied how agentic coding tools affect real development.",
+     "spoken": "But to the authors' knowledge, no prior work had studied how agentic coding tools affect real development."
+    },
+    {
+     "text": "The agent in this study is Claude Code. The paper lists its core abilities: editing files and fixing bugs across a codebase, searching for documentation, answering questions about the code, running tests and linters, and working with version control, including commits and pull requests.",
+     "spoken": "The agent in this study is Claude Code. The paper lists its core abilities: editing files and fixing bugs across a codebase, searching for documentation, answering questions about the code, running tests and linters, and working with version control, including commits and pull requests."
+    },
+    {
+     "text": "It also supports MCP, the Model Context Protocol, which connects the agent to tools and data sources such as file systems, command lines and cloud services.",
+     "spoken": "It also supports M C P, the Model Context Protocol, which connects the agent to tools and data sources such as file systems, command lines and cloud services."
+    },
+    {
+     "text": "The paper notes that, as of May 2025, agents powered by Claude 4 Sonnet were above 70% on SWE-bench, a benchmark of real GitHub issues.",
+     "spoken": "The paper notes that, as of May two thousand and twenty-five, agents powered by Claude four Sonnet were above seventy percent on swee-bench, a benchmark of real GitHub issues."
+    }
+   ]
+  },
+  {
+   "key": "B04_example",
+   "title": "Claude Code in action (Figures 1–2)",
+   "sentences": [
+    {
+     "text": "Figure 1 shows how this looks. A developer types: refactor the code.",
+     "spoken": "Figure one shows how this looks. A developer types: refactor the code."
+    },
+    {
+     "text": "Claude Code lists the files, reads them, says what it will change, and edits the file: in this example, 31 additions and 74 removals.",
+     "spoken": "Claude Code lists the files, reads them, says what it will change, and edits the file: in this example, thirty-one additions and seventy-four removals."
+    },
+    {
+     "text": "Then the developer types: commit my changes and create a PR.",
+     "spoken": "Then the developer types: commit my changes and create a P R."
+    },
+    {
+     "text": "Figure 2 is a real pull request made this way. The agent wrote the description: a summary, a test plan, and at the bottom, the line Generated with Claude Code.",
+     "spoken": "Figure two is a real pull request made this way. The agent wrote the description: a summary, a test plan, and at the bottom, the line Generated with Claude Code."
+    },
+    {
+     "text": "That line is how the study finds agent pull requests.",
+     "spoken": "That line is how the study finds agent pull requests."
+    },
+    {
+     "text": "The paper stresses that the quality of these pull requests varies. Some are merged with little modification.",
+     "spoken": "The paper stresses that the quality of these pull requests varies. Some are merged with little modification."
+    },
+    {
+     "text": "In one case, a reviewer found a problem in the generated code, the author said the change couldn't be used at all, and the pull request was closed without merging.",
+     "spoken": "In one case, a reviewer found a problem in the generated code, the author said the change couldn't be used at all, and the pull request was closed without merging."
+    },
+    {
+     "text": "And even accepted agent code often gets several follow-up commits from developers, like the ones at the bottom of this figure.",
+     "spoken": "And even accepted agent code often gets several follow-up commits from developers, like the ones at the bottom of this figure."
+    }
+   ]
+  },
+  {
+   "key": "B05_data",
+   "title": "How the data was collected",
+   "sentences": [
+    {
+     "text": "Now the study design. Figure 3 gives the overview.",
+     "spoken": "Now the study design. Figure three gives the overview."
+    },
+    {
+     "text": "On the left, data collection: agent pull requests, and a matched set of human pull requests.",
+     "spoken": "On the left, data collection: agent pull requests, and a matched set of human pull requests."
+    },
+    {
+     "text": "On the right, the research questions: purposes for RQ1, rejections for RQ2, and revisions for RQ3 and RQ4.",
+     "spoken": "On the right, the research questions: purposes for R Q one, rejections for R Q two, and revisions for R Q three and R Q four."
+    },
+    {
+     "text": "The agent is Claude Code. The team searched GitHub for pull requests carrying its signature line: Generated with Claude Code.",
+     "spoken": "The agent is Claude Code. The team searched GitHub for pull requests carrying its signature line: Generated with Claude Code."
+    },
+    {
+     "text": "They ran the search through GitHub's GraphQL API.",
+     "spoken": "They ran the search through GitHub's Graph Q L A P I."
+    },
+    {
+     "text": "They covered repositories with at least ten stars, from February 24th, 2025, the day Claude Code was released, to April 30th.",
+     "spoken": "They covered repositories with at least ten stars, from February twenty-fourth, twenty twenty-five, the day Claude Code was released, to April thirtieth."
+    },
+    {
+     "text": "That search found 797 pull requests. They dropped 54 that were still open.",
+     "spoken": "That search found seven hundred and ninety-seven pull requests. They dropped fifty-four that were still open."
+    },
+    {
+     "text": "Then, to make the comparison fair, they matched each agent pull request with a human one from the same author, in the same repository.",
+     "spoken": "Then, to make the comparison fair, they matched each agent pull request with a human one from the same author, in the same repository."
+    },
+    {
+     "text": "Where no match existed, the agent pull request was cut. That removed 176 more.",
+     "spoken": "Where no match existed, the agent pull request was cut. That removed a hundred and seventy-six more."
+    },
+    {
+     "text": "Because matches were scarce, the window for human pull requests was extended backwards, by about 10 months, to April 30th, 2024.",
+     "spoken": "Because matches were scarce, the window for human pull requests was extended backwards, by about ten months, to April thirtieth, twenty twenty-four."
+    },
+    {
+     "text": "The result: 567 agent pull requests and 567 human ones, across 157 repositories.",
+     "spoken": "The result: five hundred and sixty-seven agent pull requests, and five hundred and sixty-seven human ones, across a hundred and fifty-seven repositories."
+    },
+    {
+     "text": "The two sets don't overlap: no pull request appears in both.",
+     "spoken": "The two sets don't overlap: no pull request appears in both."
+    }
+   ]
+  },
+  {
+   "key": "B06_method",
+   "title": "Sampling and labelling (with the formulas)",
+   "sentences": [
+    {
+     "text": "To learn what each pull request was for, they sampled 213 merged agent pull requests and 221 merged human ones, and labelled every one by hand.",
+     "spoken": "To learn what each pull request was for, they sampled two hundred and thirteen merged agent pull requests, and two hundred and twenty-one merged human ones, and labelled every one by hand."
+    },
+    {
+     "text": "Why 213 and 221? They sampled from 475 merged agent pull requests and 516 merged human ones, choosing sizes for a 95% confidence level and a 5% margin of error.",
+     "spoken": "Why two hundred and thirteen and two hundred and twenty-one? They sampled from four hundred and seventy-five merged agent pull requests and five hundred and sixteen merged human ones, choosing sizes for a ninety-five percent confidence level and a five percent margin of error."
+    },
+    {
+     "text": "The paper doesn't print the formula, but the standard one reproduces its numbers exactly.",
+     "spoken": "The paper doesn't print the formula, but the standard one reproduces its numbers exactly."
+    },
+    {
+     "text": "First, z squared, times p times one minus p, over e squared. With z of 1.96, p of one half and e of 0.05, that's 384.16.",
+     "spoken": "First, z squared, times p times one minus p, over e squared. With z of one point nine six, p of one half, and e of zero point zero five, that's three hundred and eighty-four point one six."
+    },
+    {
+     "text": "Then correct for the finite population, by dividing by one plus n-zero minus one over N. For 475, that gives 212.6, which rounds up to 213. For 516, it gives 220.5, which rounds up to 221.",
+     "spoken": "Then correct for the finite population, by dividing by one plus n zero minus one, over N. For four hundred and seventy-five, that gives two hundred and twelve point six, which rounds up to two hundred and thirteen. For five hundred and sixteen, it gives two hundred and twenty point five, which rounds up to two hundred and twenty-one."
+    },
+    {
+     "text": "Each pull request was labelled with a two-dimensional scheme from Zeng and colleagues.",
+     "spoken": "Each pull request was labelled with a two-dimensional scheme from Zeng and colleagues."
+    },
+    {
+     "text": "Purpose types: fix, feature, refactor, style and performance. And object types: documentation, tests, continuous integration, build, and chores.",
+     "spoken": "Purpose types: fix, feature, refactor, style and performance. And object types: documentation, tests, continuous integration, build, and chores."
+    },
+    {
+     "text": "The scheme was designed for commits. For pull requests, the authors dropped its rule that purpose wins over object, and allowed several labels per pull request.",
+     "spoken": "The scheme was designed for commits. For pull requests, the authors dropped its rule that purpose wins over object, and allowed several labels per pull request."
+    },
+    {
+     "text": "The first and third authors labelled independently.",
+     "spoken": "The first and third authors labelled independently."
+    },
+    {
+     "text": "Because a pull request can carry several labels, they measured agreement label by label, instead of using Cohen's kappa.",
+     "spoken": "Because a pull request can carry several labels, they measured agreement label by label, instead of using Cohen's kappa."
+    },
+    {
+     "text": "They disagreed on 172 of 675 labels for agent pull requests, and 113 of 501 for human ones.",
+     "spoken": "They disagreed on one hundred and seventy-two of six hundred and seventy-five labels for agent pull requests, and one hundred and thirteen of five hundred and one for human ones."
+    },
+    {
+     "text": "So agreement is one minus 285 over 1,176, which is 75.8%.",
+     "spoken": "So agreement is one minus two hundred and eighty-five over one thousand one hundred and seventy-six, which is seventy-five point eight percent."
+    },
+    {
+     "text": "The second author reviewed every conflict and proposed final labels, and the three discussed until they reached unanimous consensus.",
+     "spoken": "The second author reviewed every conflict and proposed final labels, and the three discussed until they reached unanimous consensus."
+    },
+    {
+     "text": "The three have 7, 15 and 13 years of programming experience.",
+     "spoken": "The three have seven, fifteen and thirteen years of programming experience."
+    },
+    {
+     "text": "It's slow work, and it's what makes the next numbers worth taking seriously.",
+     "spoken": "It's slow work, and it's what makes the next numbers worth taking seriously."
+    }
+   ]
+  },
+  {
+   "key": "B07_purpose",
+   "title": "RQ1: what agents are used for",
+   "sentences": [
+    {
+     "text": "So what are agents actually used for?",
+     "spoken": "So what are agents actually used for?"
+    },
+    {
+     "text": "This is Table 1: the purpose of each pull request, with a description of every category.",
+     "spoken": "This is Table one: the purpose of each pull request, with a description of every category."
+    },
+    {
+     "text": "Bug fixes lead for both: 31.0% of agent pull requests and 30.8% of human ones. Features come second: 26.8% and 27.6%.",
+     "spoken": "Bug fixes lead for both: thirty-one percent of agent pull requests and thirty point eight percent of human ones. Features come second: twenty-six point eight percent and twenty-seven point six percent."
+    },
+    {
+     "text": "One agent pull request, for example, fixed HTTP request errors that had been ignored, and improved linter coverage.",
+     "spoken": "One agent pull request, for example, fixed HTTP request errors that had been ignored, and improved linter coverage."
+    },
+    {
+     "text": "Features can be domain-specific: one stored both the original audio files and their WAV versions for transcription.",
+     "spoken": "Features can be domain-specific: one stored both the original audio files and their wave versions for transcription."
+    },
+    {
+     "text": "Now the differences. Refactoring: 24.9% versus 14.9%.",
+     "spoken": "Now the differences. Refactoring: twenty-four point nine percent, versus fourteen point nine."
+    },
+    {
+     "text": "That's 53 of 213 agent pull requests, against 33 of 221. One switched XML parsing from serde to another parser, xml-rs, with all tests still passing and unchanged output.",
+     "spoken": "That's fifty-three of two hundred and thirteen agent pull requests, against thirty-three of two hundred and twenty-one. One switched X M L parsing from sir-dee to another parser, X M L R S, with all tests still passing and unchanged output."
+    },
+    {
+     "text": "Documentation: 22.1% versus 14.0%.",
+     "spoken": "Documentation: twenty-two point one, versus fourteen."
+    },
+    {
+     "text": "That's 47 of 213, against 31 of 221. One agent pull request added practical code examples to docstrings, fixed formatting, and clarified configuration descriptions for new users.",
+     "spoken": "That's forty-seven of two hundred and thirteen, against thirty-one of two hundred and twenty-one. One agent pull request added practical code examples to docstrings, fixed formatting, and clarified configuration descriptions for new users."
+    },
+    {
+     "text": "Tests: 18.8% versus 4.5%. That's more than four times the rate.",
+     "spoken": "Tests: eighteen point eight, versus four point five. That's more than four times the rate."
+    },
+    {
+     "text": "40 of 213, against 10 of 221. In one case, an agent raised test coverage from 70% to 94%, adding tests for code paths that had never been tested.",
+     "spoken": "forty of two hundred and thirteen, against ten of two hundred and twenty-one. In one case, an agent raised test coverage from seventy percent to ninety-four percent, adding tests for code paths that had never been tested."
+    },
+    {
+     "text": "Style and performance changes together make up 12.7% of agent pull requests and 3.2% of human ones: resolving linter warnings, refining names, or removing wildcard column selections from database queries.",
+     "spoken": "Style and performance changes together make up twelve point seven percent of agent pull requests and three point two percent of human ones: resolving linter warnings, refining names, or removing wildcard column selections from database queries."
+    },
+    {
+     "text": "Build, CI and chore work is nearly equal: 20.7% for agents, 21.2% for humans. Agents tightened CI workflow permissions, updated compilation flags, and maintained dependencies.",
+     "spoken": "Build, C I and chore work is nearly equal: twenty point seven percent for agents, twenty-one point two percent for humans. Agents tightened C I workflow permissions, updated compilation flags, and maintained dependencies."
+    },
+    {
+     "text": "Humans did more of the housekeeping: chores at 10.4%, against 3.8% for the agent.",
+     "spoken": "Humans did more of the housekeeping: chores at ten point four percent, against three point eight for the agent."
+    },
+    {
+     "text": "The authors' reading: agents are being pointed at non-functional work, like tests, refactoring and docs, while humans keep up project maintenance.",
+     "spoken": "The authors' reading: agents are being pointed at non-functional work, like tests, refactoring and docs, while humans keep up project maintenance."
+    },
+    {
+     "text": "Agent pull requests also tried to do more at once. 39.9% had more than one purpose, against 12.2% of human ones.",
+     "spoken": "Agent pull requests also tried to do more at once. Thirty-nine point nine percent had more than one purpose, against twelve point two percent of human ones."
+    },
+    {
+     "text": "The most common combinations were a feature with tests, at 9.0%, refactoring with tests, 7.7%, and a bug fix with tests, also 7.7%.",
+     "spoken": "The most common combinations were a feature with tests, at nine percent, refactoring with tests, seven point seven percent, and a bug fix with tests, also seven point seven percent."
+    },
+    {
+     "text": "One agent pull request, for example, moved an SDK to a new API endpoint and updated its test suite in the same change.",
+     "spoken": "One agent pull request, for example, moved an S D K to a new A P I endpoint and updated its test suite in the same change."
+    },
+    {
+     "text": "Figure 4 compares the size of the first submission.",
+     "spoken": "Figure four compares the size of the first submission."
+    },
+    {
+     "text": "Both groups change a median of 2 files. Agents add more lines, 48 against 24, and delete about the same, 7 against 8.",
+     "spoken": "Both groups change a median of two files. Agents add more lines, forty-eight against twenty-four, and delete about the same, seven against eight."
+    },
+    {
+     "text": "The descriptions were not similar. The median human description was 56 words.",
+     "spoken": "The descriptions were not similar. The median human description was fifty-six words."
+    },
+    {
+     "text": "For the agent: 355. More than six times longer.",
+     "spoken": "For the agent: three hundred and fifty-five. More than six times longer."
+    },
+    {
+     "text": "Is that difference real, or noise? The authors used the Mann-Whitney U test, at a significance level of 0.05.",
+     "spoken": "Is that difference real, or noise? The authors used the Mann Whitney U test, at a significance level of zero point zero five."
+    },
+    {
+     "text": "It pools both groups, ranks every value, and asks whether one group's ranks are systematically higher. U equals n1 times n2, plus n1 times n1 plus one over two, minus R1, the rank sum of the first group.",
+     "spoken": "It pools both groups, ranks every value, and asks whether one group's ranks are systematically higher. U equals n one times n two, plus n one times n one plus one, over two, minus R one, the rank sum of the first group."
+    },
+    {
+     "text": "It doesn't assume the data are normally distributed, which suits skewed counts like these.",
+     "spoken": "It doesn't assume the data are normally distributed, which suits skewed counts like these."
+    },
+    {
+     "text": "For description length, the difference is significant.",
+     "spoken": "For description length, the difference is significant."
+    },
+    {
+     "text": "The authors suggest the agent is documenting its process and reasoning, which could help reviewers.",
+     "spoken": "The authors suggest the agent is documenting its process and reasoning, which could help reviewers."
+    },
+    {
+     "text": "Whether it helps, or just gives reviewers more to read, is something this paper doesn't measure.",
+     "spoken": "Whether it helps, or just gives reviewers more to read, is something this paper doesn't measure."
+    }
+   ]
+  },
+  {
+   "key": "B08_accept",
+   "title": "RQ2: acceptance and rejections",
+   "sentences": [
+    {
+     "text": "RQ2 starts with a definition. A merged pull request counts as accepted, and one closed without merging counts as rejected.",
+     "spoken": "R Q two starts with a definition. A merged pull request counts as accepted, and one closed without merging counts as rejected."
+    },
+    {
+     "text": "The merge rate is the number merged, divided by all of them, merged plus closed.",
+     "spoken": "The merge rate is the number merged, divided by all of them, merged plus closed."
+    },
+    {
+     "text": "Table 2 has the result.",
+     "spoken": "Table two has the result."
+    },
+    {
+     "text": "475 of 567 agent pull requests were merged, and 92 rejected. That's 83.8%.",
+     "spoken": "four hundred and seventy-five of five hundred and sixty-seven agent pull requests were merged, and ninety-two rejected. That's eighty-three point eight percent."
+    },
+    {
+     "text": "For humans, 516 of 567: 91.0%.",
+     "spoken": "For humans, five hundred and sixteen of five hundred and sixty-seven: ninety-one percent."
+    },
+    {
+     "text": "Is that gap real? The authors used a chi-squared test.",
+     "spoken": "Is that gap real? The authors used a chi-squared test."
+    },
+    {
+     "text": "It compares the observed counts with the counts you'd expect if agents and humans had the same acceptance rate.",
+     "spoken": "It compares the observed counts with the counts you'd expect if agents and humans had the same acceptance rate."
+    },
+    {
+     "text": "Chi-squared is the sum, over the four cells, of observed minus expected, squared, divided by expected.",
+     "spoken": "Chi-squared is the sum, over the four cells, of observed minus expected, squared, divided by expected."
+    },
+    {
+     "text": "With 991 merged in total, equal rates would mean 495.5 merged in each group. The agents had 475, and the humans 516.",
+     "spoken": "With nine hundred and ninety-one merged in total, equal rates would mean four hundred and ninety-five point five merged in each group. The agents had four hundred and seventy-five, and the humans five hundred and sixteen."
+    },
+    {
+     "text": "The authors report p < 0.05: humans have a significantly higher acceptance rate.",
+     "spoken": "The authors report p less than zero point zero five: humans have a significantly higher acceptance rate."
+    },
+    {
+     "text": "Merge time is different, because it's a time until an event. For that, the authors used a log-rank test, which compares the time-to-merge curves of the two groups.",
+     "spoken": "Merge time is different, because it's a time until an event. For that, the authors used a log-rank test, which compares the time-to-merge curves of the two groups."
+    },
+    {
+     "text": "The median time to merge is 1.23 hours for agent pull requests and 1.04 for human ones, and the log-rank test finds no significant difference.",
+     "spoken": "The median time to merge is one point two three hours for agent pull requests and one point zero four for human ones, and the log-rank test finds no significant difference."
+    },
+    {
+     "text": "Then, why were agent pull requests rejected? The authors coded all 92 rejections with a framework from Pantiuchina and colleagues, adding new categories where it didn't fit.",
+     "spoken": "Then, why were agent pull requests rejected? The authors coded all ninety-two rejections with a framework from Pantiuchina and colleagues, adding new categories where it didn't fit."
+    },
+    {
+     "text": "Here they report Cohen's kappa, which corrects agreement for chance: observed agreement minus chance agreement, over one minus chance agreement.",
+     "spoken": "Here they report Cohen's kappa, which corrects agreement for chance: observed agreement minus chance agreement, over one minus chance agreement."
+    },
+    {
+     "text": "Observed agreement was 68.5%, and kappa was 0.4865, which the authors describe as moderate agreement.",
+     "spoken": "Observed agreement was sixty-eight point five percent, and kappa was zero point four eight six five, which the authors describe as moderate agreement."
+    },
+    {
+     "text": "This is Table 3, with every reason.",
+     "spoken": "This is Table three, with every reason."
+    },
+    {
+     "text": "The biggest category by far: 64.1%, 59 of the 92, were closed with no explanation at all.",
+     "spoken": "The biggest category by far: sixty-four point one percent, fifty-nine of the ninety-two, were closed with no explanation at all."
+    },
+    {
+     "text": "Among the rest, the most common reasons are about project context. 12.0% were implemented by another pull request or developer. 5.4% were created only to trigger automated checks. 3.3% were too large, and 3.3% had become obsolete.",
+     "spoken": "Among the rest, the most common reasons are about project context. twelve percent were implemented by another pull request or developer. five point four percent were created only to trigger automated checks. three point three percent were too large, and three point three percent had become obsolete."
+    },
+    {
+     "text": "One was closed with the comment: closing in favor of smaller, more focused PRs to make reviews more manageable.",
+     "spoken": "One was closed with the comment: closing in favor of smaller, more focused pull requests to make reviews more manageable."
+    },
+    {
+     "text": "Others were abandoned: one was marked stale and closed automatically after the contributor stopped responding.",
+     "spoken": "Others were abandoned: one was marked stale and closed automatically after the contributor stopped responding."
+    },
+    {
+     "text": "Technical problems account for 4.4%: non-optimal designs, overly complex solutions, and code that introduced bugs.",
+     "spoken": "Technical problems account for four point four percent: non-optimal designs, overly complex solutions, and code that introduced bugs."
+    },
+    {
+     "text": "One reviewer wrote that a pull request was badly extracted, had hallucinations, and broke the UI.",
+     "spoken": "One reviewer wrote that a pull request was badly extracted, had hallucinations, and broke the U I."
+    },
+    {
+     "text": "And one pull request, 1.1%, was withdrawn explicitly because of doubts about the AI-generated code.",
+     "spoken": "And one pull request, one point one percent, was withdrawn explicitly because of doubts about the AI-generated code."
+    },
+    {
+     "text": "Where there was a reason, it was mostly about project context, like someone solving the problem another way, rather than broken AI code.",
+     "spoken": "Where there was a reason, it was mostly about project context, like someone solving the problem another way, rather than broken AI code."
+    }
+   ]
+  },
+  {
+   "key": "B09_asis",
+   "title": "RQ3: merged as-is, and revision effort",
+   "sentences": [
+    {
+     "text": "RQ3: how many merged pull requests needed no revisions at all?",
+     "spoken": "R Q three: how many merged pull requests needed no revisions at all?"
+    },
+    {
+     "text": "The authors count a pull request as merged without revision when it was merged with a single commit, the initial submission.",
+     "spoken": "The authors count a pull request as merged without revision when it was merged with a single commit, the initial submission."
+    },
+    {
+     "text": "Among the ones that were merged, 54.9% of agent pull requests went in exactly as submitted, with no follow-up commits. For humans, 58.5%.",
+     "spoken": "Among the ones that were merged, fifty-four point nine percent of agent pull requests went in exactly as submitted, with no follow-up commits. For humans, fifty-eight point five."
+    },
+    {
+     "text": "That's 261 agent pull requests, against 302 human ones, and the chi-squared test finds no significant difference.",
+     "spoken": "That's two hundred and sixty-one agent pull requests, against three hundred and two human ones, and the chi-squared test finds no significant difference."
+    },
+    {
+     "text": "When revisions were needed, how many were there? Figure 5 shows the number of revision commits.",
+     "spoken": "When revisions were needed, how many were there? Figure five shows the number of revision commits."
+    },
+    {
+     "text": "Both groups have a median of 2 revision commits, and the Mann-Whitney test finds no significant difference.",
+     "spoken": "Both groups have a median of two revision commits, and the Mann Whitney test finds no significant difference."
+    },
+    {
+     "text": "Figure 6 shows the size of those revisions: files changed, lines added and lines deleted, not counting the first commit.",
+     "spoken": "Figure six shows the size of those revisions: files changed, lines added and lines deleted, not counting the first commit."
+    },
+    {
+     "text": "Again, none of the differences is statistically significant.",
+     "spoken": "Again, none of the differences is statistically significant."
+    },
+    {
+     "text": "Measured against the first submission, revisions changed a median of 50.0% more files, for both groups.",
+     "spoken": "Measured against the first submission, revisions changed a median of fifty percent more files, for both groups."
+    },
+    {
+     "text": "For changed lines, human pull requests grew more: a median of 121.1%, against 94.3% for agent pull requests.",
+     "spoken": "For changed lines, human pull requests grew more: a median of one hundred and twenty-one point one percent, against ninety-four point three percent for agent pull requests."
+    },
+    {
+     "text": "So when agent code needs work, it needs about as much work as human code.",
+     "spoken": "So when agent code needs work, it needs about as much work as human code."
+    }
+   ]
+  },
+  {
+   "key": "B10_revisions",
+   "title": "RQ4: what reviewers fix",
+   "sentences": [
+    {
+     "text": "Now, 214 of the agent's merged pull requests, that's 45.1%, were changed before they were merged. What got fixed?",
+     "spoken": "Now, two hundred and fourteen of the agent's merged pull requests, that's forty-five point one percent, were changed before they were merged. What got fixed?"
+    },
+    {
+     "text": "The authors classified every commit added after the first submission, counting each type once per pull request.",
+     "spoken": "The authors classified every commit added after the first submission, counting each type once per pull request."
+    },
+    {
+     "text": "The second and third authors labelled them, agreeing on 541 of 844 labels, which is 64.1%.",
+     "spoken": "The second and third authors labelled them, agreeing on five hundred and forty-one of eight hundred and forty-four labels, which is sixty-four point one percent."
+    },
+    {
+     "text": "This is Table 4.",
+     "spoken": "This is Table four."
+    },
+    {
+     "text": "Bugs, in 47.7% of them. Often error handling that the agent had been too optimistic about.",
+     "spoken": "Bugs, in forty-seven point seven percent of them. Often, error handling that the agent had been too optimistic about."
+    },
+    {
+     "text": "In one case, errors inside concurrent workers had to be passed back through channels so that fatal errors surfaced immediately. In another, file-operation failures were upgraded from warnings to fatal errors.",
+     "spoken": "In one case, errors inside concurrent workers had to be passed back through channels so that fatal errors surfaced immediately. In another, file-operation failures were upgraded from warnings to fatal errors."
+    },
+    {
+     "text": "Second, documentation, in 29.0%.",
+     "spoken": "Second: documentation, in twenty-nine percent."
+    },
+    {
+     "text": "So documentation is something agents do more of, and also one of the things most often fixed afterwards.",
+     "spoken": "So documentation is something agents do more of, and also one of the things most often fixed afterwards."
+    },
+    {
+     "text": "The paper's example: an agent changed the code, but left an outdated optional-dependencies section in the install docs.",
+     "spoken": "The paper's example: an agent changed the code, but left an outdated optional-dependencies section in the install docs."
+    },
+    {
+     "text": "A later revision had to remove it. The authors' point: agents often left related files out of sync with their changes.",
+     "spoken": "A later revision had to remove it. The authors' point: agents often left related files out of sync with their changes."
+    },
+    {
+     "text": "Refactoring came next, at 27.1%, then code style, at 23.4%.",
+     "spoken": "Refactoring came next, at twenty-seven point one percent, then code style, at twenty-three point four."
+    },
+    {
+     "text": "In one refactoring, a reviewer consolidated initialization logic from several entry points into one shared service. In a style revision, a reviewer removed unused imports and unused exception variables, and fixed the import order.",
+     "spoken": "In one refactoring, a reviewer consolidated initialization logic from several entry points into one shared service. In a style revision, a reviewer removed unused imports and unused exception variables, and fixed the import order."
+    },
+    {
+     "text": "Chores, 21.0%, were often a version bump or release note the agent missed, like moving a version from alpha 1 to alpha 2 in a Gradle configuration file.",
+     "spoken": "Chores, twenty-one percent, were often a version bump or release note the agent missed, like moving a version from alpha one to alpha two, in a Gradle configuration file."
+    },
+    {
+     "text": "Tests, 16.4%. Features, 15.4%, like adding multi-line comment support to an API the agent had implemented. And build changes, 14.0%, like updating a linter that broke with Go 1.24.1.",
+     "spoken": "Tests, sixteen point four percent. Features, fifteen point four percent, like adding multi-line comment support to an A P I the agent had implemented. And build changes, fourteen percent, like updating a linter that broke with Go one point twenty-four point one."
+    },
+    {
+     "text": "And a small tail: CI changes in 7.0%, and performance in 1.4%.",
+     "spoken": "And a small tail: C I changes in seven percent, and performance in one point four percent."
+    },
+    {
+     "text": "One twist: in 41.1% of the revised pull requests, Claude co-authored the fixes too.",
+     "spoken": "One twist: in forty-one point one percent of the revised pull requests, Claude co-authored the fixes too."
+    },
+    {
+     "text": "Across all revision commits, 298 of 873, or 34.1%, carried a Co-Authored-By Claude line.",
+     "spoken": "Across all revision commits, two hundred and ninety-eight of eight hundred and seventy-three, or thirty-four point one percent, carried a co-authored by Claude line."
+    },
+    {
+     "text": "So agents aren't only writing the first draft. Developers use them to revise it, too.",
+     "spoken": "So agents aren't only writing the first draft. Developers use them to revise it, too."
+    }
+   ]
+  },
+  {
+   "key": "B11_implications",
+   "title": "Implications",
+   "sentences": [
+    {
+     "text": "The authors then turn the findings into advice for three audiences.",
+     "spoken": "The authors then turn the findings into advice for three audiences."
+    },
+    {
+     "text": "For researchers: measure the hidden cost of trust. Few rejections cite a lack of confidence explicitly, but the authors suspect reviewer skepticism operates more quietly.",
+     "spoken": "For researchers: measure the hidden cost of trust. Few rejections cite a lack of confidence explicitly, but the authors suspect reviewer skepticism operates more quietly."
+    },
+    {
+     "text": "They also call for benchmarks built around pull requests. Benchmarks like SWE-bench, they note, overlook documentation drift, style adherence and reviewer negotiation, which together accounted for 52.4% of agent pull request revisions.",
+     "spoken": "They also call for benchmarks built around pull requests. Benchmarks like swee-bench, they note, overlook documentation drift, style adherence and reviewer negotiation, which together accounted for fifty-two point four percent of agent pull request revisions."
+    },
+    {
+     "text": "And they want full traces of the workflow, because 34.1% of revision commits were co-authored by Claude, and review threads also mentioned other agents such as GitHub Copilot.",
+     "spoken": "And they want full traces of the workflow, because thirty-four point one percent of revision commits were co-authored by Claude, and review threads also mentioned other agents such as GitHub Copilot."
+    },
+    {
+     "text": "For developers: split large, multi-purpose pull requests. Nearly 40% of agent pull requests combined several tasks, and being too large was among the top three rejection reasons.",
+     "spoken": "For developers: split large, multi-purpose pull requests. Nearly forty percent of agent pull requests combined several tasks, and being too large was among the top three rejection reasons."
+    },
+    {
+     "text": "And write the project's rules down for the agent, in a guideline file such as CLAUDE.md, with formatting rules, design principles and architectural constraints.",
+     "spoken": "And write the project's rules down for the agent, in a guideline file such as claude dot M D, with formatting rules, design principles and architectural constraints."
+    },
+    {
+     "text": "For tool builders: attach a confidence card to each pull request, with the plan, the key assumptions, the alternatives considered, and known edge cases.",
+     "spoken": "For tool builders: attach a confidence card to each pull request, with the plan, the key assumptions, the alternatives considered, and known edge cases."
+    },
+    {
+     "text": "Automate the low-risk upkeep, like rebasing, resolving simple conflicts and answering staleness warnings.",
+     "spoken": "Automate the low-risk upkeep, like rebasing, resolving simple conflicts and answering staleness warnings."
+    },
+    {
+     "text": "And connect agents to linters and static analysis through MCP, so style problems are caught before a human sees them.",
+     "spoken": "And connect agents to linters and static analysis through M C P, so style problems are caught before a human sees them."
+    }
+   ]
+  },
+  {
+   "key": "B12_threats",
+   "title": "Threats to validity",
+   "sentences": [
+    {
+     "text": "Now, what this study doesn't show.",
+     "spoken": "Now, what this study doesn't show."
+    },
+    {
+     "text": "Start with internal validity. A pull request marked Generated with Claude Code may still have been edited by a human, and unmarked ones may still involve AI.",
+     "spoken": "Start with internal validity. A pull request marked Generated with Claude Code may still have been edited by a human, and unmarked ones may still involve AI."
+    },
+    {
+     "text": "The authors argue that undisclosed AI in the human baseline would only shrink the differences, so the differences they found are likely conservative.",
+     "spoken": "The authors argue that undisclosed AI in the human baseline would only shrink the differences, so the differences they found are likely conservative."
+    },
+    {
+     "text": "The human sample reaching back to April 2024 is another risk. Only 42.0% of the human pull requests, 238 of 567, came from the same window as the agent ones.",
+     "spoken": "The human sample reaching back to April twenty twenty-four is another risk. Only forty-two percent of the human pull requests, two hundred and thirty-eight of five hundred and sixty-seven, came from the same window as the agent ones."
+    },
+    {
+     "text": "So they checked. In that time-aligned subset, fixes were 27.0% and features 24.7%, and tests just 9.0%, still well below the agents' 18.8%.",
+     "spoken": "So they checked. In that time-aligned subset, fixes were twenty-seven percent and features twenty-four point seven percent, and tests just nine percent, still well below the agents' eighteen point eight percent."
+    },
+    {
+     "text": "The subset's acceptance rate was 87.0%, against 91.0% for the full human set, and its median merge time 0.7 hours against 1.0. The authors conclude the extended window didn't bias the results.",
+     "spoken": "The subset's acceptance rate was eighty-seven percent, against ninety-one percent for the full human set, and its median merge time zero point seven hours against one. The authors conclude the extended window didn't bias the results."
+    },
+    {
+     "text": "The study also can't separate the effect of the agent itself from the effect of its MCP tool integrations.",
+     "spoken": "The study also can't separate the effect of the agent itself from the effect of its M C P tool integrations."
+    },
+    {
+     "text": "Beyond that, four limits stand out.",
+     "spoken": "Beyond that, four limits stand out."
+    },
+    {
+     "text": "One: it's Claude Code only. The authors say the results may not carry over to other tools, such as GitHub Copilot.",
+     "spoken": "One: it's Claude Code only. The authors say the results may not carry over to other tools, such as GitHub Copilot."
+    },
+    {
+     "text": "Two: it covers about two months right after launch, which the authors call an enthusiastic phase of experimentation.",
+     "spoken": "Two: it covers about two months right after launch, which the authors call an enthusiastic phase of experimentation."
+    },
+    {
+     "text": "Three: pull requests still open were excluded. The authors call this survival bias, because complex or controversial ones stay open longest.",
+     "spoken": "Three: pull requests still open were excluded. The authors call this survival bias, because complex or controversial ones stay open longest."
+    },
+    {
+     "text": "Four: merged doesn't mean good. The study has no long-term data on bugs or reverts that came later.",
+     "spoken": "Four: merged doesn't mean good. The study has no long-term data on bugs or reverts that came later."
+    },
+    {
+     "text": "Good researchers tell you where their study is weak. These ones did.",
+     "spoken": "Good researchers tell you where their study is weak. These ones did."
+    }
+   ]
+  },
+  {
+   "key": "B13_closing",
+   "title": "Takeaway",
+   "sentences": [
+    {
+     "text": "So where does that leave us?",
+     "spoken": "So where does that leave us?"
+    },
+    {
+     "text": "Agents are already doing real work on real projects, and most of it gets merged.",
+     "spoken": "Agents are already doing real work on real projects, and most of it gets merged."
+    },
+    {
+     "text": "But the revisions show where the friction is: bugs, and documentation that drifted away from the code it describes.",
+     "spoken": "But the revisions show where the friction is: bugs, and documentation that drifted away from the code it describes."
+    },
+    {
+     "text": "My read: the hard part is shifting, from writing the change to checking that it's right.",
+     "spoken": "My read: the hard part is shifting, from writing the change to checking that it's right."
+    },
+    {
+     "text": "In the next video, we'll look at SWE-bench, the benchmark these authors say misses documentation drift, and the exact rule it uses to decide whether a fix counts.",
+     "spoken": "In the next video, we'll look at swee-bench, the benchmark these authors say misses documentation drift, and the exact rule it uses to decide whether a fix counts."
+    },
+    {
+     "text": "The paper is linked in the description. Thanks for watching.",
+     "spoken": "The paper is linked in the description. Thanks for watching."
+    }
+   ]
+  }
+ ],
+ "source": "Claude (hand-checked in Claude Code)"
+}

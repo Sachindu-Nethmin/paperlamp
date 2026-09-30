@@ -1,0 +1,7 @@
+{
+  "model": "ornith:9b",
+  "voice": "say",
+  "say_voice": "",
+  "chatterbox_python": "/path/to/venv-with-chatterbox/bin/python",
+  "voice_reference": "/path/to/your_voice_reference.wav"
+}

@@ -1,0 +1,922 @@
+{
+ "meta": {
+  "title": "SWE-bench: Can Language Models Resolve Real-World GitHub Issues?",
+  "authors": [
+   "Carlos E. Jimenez",
+   "John Yang",
+   "Alexander Wettig",
+   "Shunyu Yao",
+   "Kexin Pei",
+   "Ofir Press",
+   "Karthik Narasimhan"
+  ],
+  "venue": "ICLR",
+  "year": "2024",
+  "one_line": "A benchmark of 2,294 real GitHub issues from 12 Python repositories."
+ },
+ "chapters": [
+  {
+   "key": "B01_hook",
+   "title": "Intro",
+   "sentences": [
+    {
+     "text": "In late 2023, a team from Princeton gave the strongest AI language models real problems from real open-source projects.",
+     "spoken": "In late two thousand and twenty-three, a team from Princeton gave the strongest AI language models real problems from real open-source projects."
+    },
+    {
+     "text": "The best model resolved 1.96% of them.",
+     "spoken": "The best model resolved one point nine six percent of them."
+    },
+    {
+     "text": "That's about two issues in every hundred.",
+     "spoken": "That's about two issues in every hundred."
+    },
+    {
+     "text": "These weren't puzzles. They were ordinary GitHub issues, bug reports and feature requests, from libraries like Django, scikit-learn and Matplotlib.",
+     "spoken": "These weren't puzzles. They were ordinary GitHub issues, bug reports and feature requests, from libraries like Django, sci-kit learn and Mat-plot-lib."
+    },
+    {
+     "text": "The benchmark they built to measure this is called SWE-bench.",
+     "spoken": "The benchmark they built to measure this is called swee-bench."
+    },
+    {
+     "text": "In this video we'll go through the paper properly: how the tasks were built, the exact rule that decides whether a fix counts, how the models were tested, and why they failed.",
+     "spoken": "In this video we'll go through the paper properly: how the tasks were built, the exact rule that decides whether a fix counts, how the models were tested, and why they failed."
+    },
+    {
+     "text": "We'll use the paper's own figures and tables, and the formulas behind the numbers.",
+     "spoken": "We'll use the paper's own figures and tables, and the formulas behind the numbers."
+    }
+   ]
+  },
+  {
+   "key": "B02_paper",
+   "title": "The paper",
+   "sentences": [
+    {
+     "text": "The paper is SWE-bench: Can Language Models Resolve Real-World GitHub Issues?, published at ICLR 2024.",
+     "spoken": "The paper is swee-bench: Can Language Models Resolve Real-World GitHub Issues?, published at I C L R two thousand and twenty-four."
+    },
+    {
+     "text": "It's by Carlos Jimenez and John Yang, who contributed equally, with Alexander Wettig, Shunyu Yao, Kexin Pei, Ofir Press and Karthik Narasimhan, from Princeton University and the University of Chicago.",
+     "spoken": "It's by Carlos Jimenez and John Yang, who contributed equally, with Alexander Wettig, Shunyu Yao, Kexin Pei, Ofir Press and Karthik Narasimhan, from Princeton University and the University of Chicago."
+    },
+    {
+     "text": "The paper is published under a Creative Commons Attribution license, which is why you'll see its real figures on screen, credited in the corner.",
+     "spoken": "The paper is published under a Creative Commons Attribution license, which is why you'll see its real figures on screen, credited in the corner."
+    },
+    {
+     "text": "Here's the plan: why a new benchmark was needed, how the 2,294 tasks were built, how a fix is judged, how the models were tested, the results, why the models failed, and what the paper can't tell us.",
+     "spoken": "Here's the plan: why a new benchmark was needed, how the two thousand two hundred and ninety-four tasks were built, how a fix is judged, how the models were tested, the results, why the models failed, and what the paper can't tell us."
+    }
+   ]
+  },
+  {
+   "key": "B03_why",
+   "title": "Why a new benchmark?",
+   "sentences": [
+    {
+     "text": "Start with the problem the authors wanted to solve.",
+     "spoken": "Start with the problem the authors wanted to solve."
+    },
+    {
+     "text": "They argue that language models have outpaced our ability to evaluate them, and that existing benchmarks have become saturated.",
+     "spoken": "They argue that language models have outpaced our ability to evaluate them, and that existing benchmarks have become saturated."
+    },
+    {
+     "text": "Coding tasks are attractive for a benchmark, because a solution can be checked by running tests.",
+     "spoken": "Coding tasks are attractive for a benchmark, because a solution can be checked by running tests."
+    },
+    {
+     "text": "But the standard coding benchmark at the time, HumanEval, mostly contains self-contained problems that can be solved in a few lines of code.",
+     "spoken": "But the standard coding benchmark at the time, Human Eval, mostly contains self-contained problems that can be solved in a few lines of code."
+    },
+    {
+     "text": "Real software engineering isn't like that.",
+     "spoken": "Real software engineering isn't like that."
+    },
+    {
+     "text": "Fixing a bug can mean navigating a large repository, understanding how functions in different files interact, or spotting a small error in convoluted code.",
+     "spoken": "Fixing a bug can mean navigating a large repository, understanding how functions in different files interact, or spotting a small error in convoluted code."
+    },
+    {
+     "text": "So the idea behind SWE-bench is simple: take a real issue, the real codebase, and the tests the real developers wrote, and see whether a model can do the developer's job.",
+     "spoken": "So the idea behind swee-bench is simple: take a real issue, the real codebase, and the tests the real developers wrote, and see whether a model can do the developer's job."
+    }
+   ]
+  },
+  {
+   "key": "B04_task",
+   "title": "What a task looks like (P, C, δ, T)",
+   "sentences": [
+    {
+     "text": "This is Figure 1 from the paper. It shows one task from start to finish.",
+     "spoken": "This is Figure one from the paper. It shows one task from start to finish."
+    },
+    {
+     "text": "On the left is the input: the text of a GitHub issue, and a snapshot of the whole codebase.",
+     "spoken": "On the left is the input: the text of a GitHub issue, and a snapshot of the whole codebase."
+    },
+    {
+     "text": "In the middle, a language model reads both, and writes a patch: a list of lines to remove and lines to add.",
+     "spoken": "In the middle, a language model reads both, and writes a patch: a list of lines to remove and lines to add."
+    },
+    {
+     "text": "On the right, the patch is applied, and the repository's own unit tests are run. The tests decide whether the issue was resolved.",
+     "spoken": "On the right, the patch is applied, and the repository's own unit tests are run. The tests decide whether the issue was resolved."
+    },
+    {
+     "text": "Appendix A makes this precise. Each task instance has four parts.",
+     "spoken": "Appendix A makes this precise. Each task instance has four parts."
+    },
+    {
+     "text": "P, the problem statement: the text of the issues linked to the pull request.",
+     "spoken": "P, the problem statement: the text of the issues linked to the pull request."
+    },
+    {
+     "text": "C, the codebase: the repository checked out at the pull request's base commit, the state just before the fix.",
+     "spoken": "C, the codebase: the repository checked out at the pull request's base commit, the state just before the fix."
+    },
+    {
+     "text": "Delta, the gold patch: the non-test part of the real pull request, the fix that was actually merged.",
+     "spoken": "Delta, the gold patch: the non-test part of the real pull request, the fix that was actually merged."
+    },
+    {
+     "text": "And T, the tests: every test in the test files that the pull request changed.",
+     "spoken": "And T, the tests: every test in the test files that the pull request changed."
+    },
+    {
+     "text": "Figure 7 shows a real instance, from SymPy.",
+     "spoken": "Figure seven shows a real instance, from Sim-Pie."
+    },
+    {
+     "text": "The issue says that lambdify, used on an expression containing an identity matrix, gives an unexpected result.",
+     "spoken": "The issue says that lambda-fy, used on an expression containing an identity matrix, gives an unexpected result."
+    },
+    {
+     "text": "The code printer writes the identity matrix as the letter I, and Python interprets I as its built-in complex number.",
+     "spoken": "The code printer writes the identity matrix as the letter I, and Python interprets I as its built-in complex number."
+    },
+    {
+     "text": "The gold patch adds a printing rule for identity matrices, and the test patch adds an assertion that Identity of 3 prints as numpy.eye(3).",
+     "spoken": "The gold patch adds a printing rule for identity matrices, and the test patch adds an assertion that Identity of three prints as numpy dot eye of three."
+    },
+    {
+     "text": "A model sees only the issue and the codebase. It never sees the gold patch or the tests.",
+     "spoken": "A model sees only the issue and the codebase. It never sees the gold patch or the tests."
+    }
+   ]
+  },
+  {
+   "key": "B05_build",
+   "title": "How 2,294 tasks were built",
+   "sentences": [
+    {
+     "text": "So how do you turn GitHub into a benchmark? Figure 2 shows the three-stage pipeline.",
+     "spoken": "So how do you turn GitHub into a benchmark? Figure two shows the three-stage pipeline."
+    },
+    {
+     "text": "Stage one: collect pull requests from 12 popular Python repositories, about 93,000 in total.",
+     "spoken": "Stage one: collect pull requests from twelve popular Python repositories, about ninety-three thousand in total."
+    },
+    {
+     "text": "The repositories were chosen from the most downloaded packages on PyPI, because popular projects tend to be better maintained and better tested.",
+     "spoken": "The repositories were chosen from the most downloaded packages on the Python package index, because popular projects tend to be better maintained and better tested."
+    },
+    {
+     "text": "Stage two: filter by attributes. A pull request is kept only if it was merged, it resolves a GitHub issue, and it changes test files.",
+     "spoken": "Stage two: filter by attributes. A pull request is kept only if it was merged, it resolves a GitHub issue, and it changes test files."
+    },
+    {
+     "text": "Linked issues are found by scanning the pull request's title, body and commit messages for phrases like fixes, followed by an issue number.",
+     "spoken": "Linked issues are found by scanning the pull request's title, body and commit messages for phrases like fixes, followed by an issue number."
+    },
+    {
+     "text": "A test change is detected when an edited file path contains a word like test or testing.",
+     "spoken": "A test change is detected when an edited file path contains a word like test or testing."
+    },
+    {
+     "text": "Stage three: filter by execution. This is the expensive part.",
+     "spoken": "Stage three: filter by execution. This is the expensive part."
+    },
+    {
+     "text": "For each candidate, the authors create an environment, check out the base commit, install the project, apply only the new tests, and run them. That produces a log they call log-pre.",
+     "spoken": "For each candidate, the authors create an environment, check out the base commit, install the project, apply only the new tests, and run them. That produces a log they call log pre."
+    },
+    {
+     "text": "Then they apply the gold patch, run the same tests again, and get log-post.",
+     "spoken": "Then they apply the gold patch, run the same tests again, and get log post."
+    },
+    {
+     "text": "If any step fails, whether it's installing, patching or running the tests, the candidate is discarded. The authors say this step generally removes about half of the candidates.",
+     "spoken": "If any step fails, whether it's installing, patching or running the tests, the candidate is discarded. The authors say this step generally removes about half of the candidates."
+    },
+    {
+     "text": "They also drop tasks whose log-pre shows an ImportError or AttributeError, because that usually means a test calls something only the fix creates, with a name nobody could guess from the issue.",
+     "spoken": "They also drop tasks whose log pre shows an import error or attribute error, because that usually means a test calls something only the fix creates, with a name nobody could guess from the issue."
+    },
+    {
+     "text": "Then comes the key rule. Each log is parsed into a status for every test: pass, or fail.",
+     "spoken": "Then comes the key rule. Each log is parsed into a status for every test: pass, or fail."
+    },
+    {
+     "text": "A test that fails before the fix and passes after it is called a fail-to-pass test.",
+     "spoken": "A test that fails before the fix and passes after it is called a fail-to-pass test."
+    },
+    {
+     "text": "A task is kept only if it has at least one fail-to-pass test. That ensures the tests really exercise the reported problem, and that the fix isn't trivial.",
+     "spoken": "A task is kept only if it has at least one fail-to-pass test. That ensures the tests really exercise the reported problem, and that the fix isn't trivial."
+    },
+    {
+     "text": "Tests that pass both before and after are pass-to-pass tests. They don't check the issue; they check that nothing else broke.",
+     "spoken": "Tests that pass both before and after are pass-to-pass tests. They don't check the issue; they check that nothing else broke."
+    },
+    {
+     "text": "Here's the idea on a small example. Before the fix, the new test fails; after the fix, it passes. The older tests pass both times.",
+     "spoken": "Here's the idea on a small example. Before the fix, the new test fails; after the fix, it passes. The older tests pass both times."
+    },
+    {
+     "text": "Table 10 in the appendix shows what these filters did to each repository. 93,139 pull requests were crawled.",
+     "spoken": "Table ten in the appendix shows what these filters did to each repository. ninety-three thousand one hundred and thirty-nine pull requests were crawled."
+    },
+    {
+     "text": "11,407 survived conversion into candidate tasks.",
+     "spoken": "eleven thousand four hundred and seven survived conversion into candidate tasks."
+    },
+    {
+     "text": "And 2,294 survived execution-based validation. That's the benchmark.",
+     "spoken": "And two thousand two hundred and ninety-four survived execution-based validation. That's the benchmark."
+    },
+    {
+     "text": "So only a small fraction of real pull requests became tasks.",
+     "spoken": "So only a small fraction of real pull requests became tasks."
+    },
+    {
+     "text": "Django contributed the most, 850 tasks. Flask contributed just 11, out of 2,434 pull requests.",
+     "spoken": "Django contributed the most, eight hundred and fifty tasks. Flask contributed just eleven, out of two thousand four hundred and thirty-four pull requests."
+    }
+   ]
+  },
+  {
+   "key": "B06_judge",
+   "title": "The rule that decides a fix",
+   "sentences": [
+    {
+     "text": "Now, how is a model's answer judged? Figure 8, from the appendix, shows the evaluation pipeline for one task.",
+     "spoken": "Now, how is a model's answer judged? Figure eight, from the appendix, shows the evaluation pipeline for one task."
+    },
+    {
+     "text": "The harness resets the repository to the base commit, activates the right environment, installs the project, and applies the test patch.",
+     "spoken": "The harness resets the repository to the base commit, activates the right environment, installs the project, and applies the test patch."
+    },
+    {
+     "text": "Then it applies the model's patch. If that fails, it tries to repair the patch automatically, by removing unnecessary context lines and recalculating the headers.",
+     "spoken": "Then it applies the model's patch. If that fails, it tries to repair the patch automatically, by removing unnecessary context lines and recalculating the headers."
+    },
+    {
+     "text": "If the patch still won't apply, or the tests can't run, the model scores zero on that task.",
+     "spoken": "If the patch still won't apply, or the tests can't run, the model scores zero on that task."
+    },
+    {
+     "text": "Otherwise, it runs the tests. Here is the rule, written out.",
+     "spoken": "Otherwise, it runs the tests. Here is the rule, written out."
+    },
+    {
+     "text": "A task counts as resolved only if the patch applied, and every fail-to-pass test and every pass-to-pass test passes.",
+     "spoken": "A task counts as resolved only if the patch applied, and every fail-to-pass test and every pass-to-pass test passes."
+    },
+    {
+     "text": "A test that's missing from the log counts as a failure.",
+     "spoken": "A test that's missing from the log counts as a failure."
+    },
+    {
+     "text": "So fixing the bug isn't enough. Break one existing test, and the task is not resolved.",
+     "spoken": "So fixing the bug isn't enough. Break one existing test, and the task is not resolved."
+    },
+    {
+     "text": "The headline metric, percent resolved, is the share of all 2,294 tasks resolved this way.",
+     "spoken": "The headline metric, percent resolved, is the share of all two thousand two hundred and ninety-four tasks resolved this way."
+    },
+    {
+     "text": "The paper also reports percent apply: the share of generated patches that could be applied to the code at all.",
+     "spoken": "The paper also reports percent apply: the share of generated patches that could be applied to the code at all."
+    },
+    {
+     "text": "Keep that second number in mind. It turns out to matter a lot.",
+     "spoken": "Keep that second number in mind. It turns out to matter a lot."
+    }
+   ]
+  },
+  {
+   "key": "B07_data",
+   "title": "Inside the dataset",
+   "sentences": [
+    {
+     "text": "What do these 2,294 tasks look like? Figure 3 shows how they split across the 12 repositories, and Table 1 summarizes their size.",
+     "spoken": "What do these two thousand two hundred and ninety-four tasks look like? Figure three shows how they split across the twelve repositories, and Table one summarizes their size."
+    },
+    {
+     "text": "The issue text averages 195.1 words. The longest is 4,477.",
+     "spoken": "The issue text averages one hundred and ninety-five point one words. The longest is four thousand four hundred and seventy-seven."
+    },
+    {
+     "text": "The codebases are large: on average 3,010 non-test files, and 438,000 lines of non-test code.",
+     "spoken": "The codebases are large: on average three thousand and ten non-test files, and four hundred and thirty-eight thousand lines of non-test code."
+    },
+    {
+     "text": "The gold patch edits on average 1.7 files, 3 functions, and 32.8 lines.",
+     "spoken": "The gold patch edits on average one point seven files, three functions, and thirty-two point eight lines."
+    },
+    {
+     "text": "Put those side by side. On average, the model has to find 32.8 lines to change, inside 438,000.",
+     "spoken": "Put those side by side. On average, the model has to find thirty-two point eight lines to change, inside four hundred and thirty-eight thousand."
+    },
+    {
+     "text": "That's the core difficulty: almost everything the model could read is irrelevant to the fix.",
+     "spoken": "That's the core difficulty: almost everything the model could read is irrelevant to the fix."
+    },
+    {
+     "text": "Each task has on average 9.1 fail-to-pass tests, and 120.8 tests in total.",
+     "spoken": "Each task has on average nine point one fail-to-pass tests, and one hundred and twenty point eight tests in total."
+    },
+    {
+     "text": "Averages can mislead, so the appendix also gives the full distributions, in Figure 9.",
+     "spoken": "Averages can mislead, so the appendix also gives the full distributions, in Figure nine."
+    },
+    {
+     "text": "The median task has an issue of 140 words, and a codebase of just under 1,900 files and 400,000 lines.",
+     "spoken": "The median task has an issue of one hundred and forty words, and a codebase of just under one thousand nine hundred files and four hundred thousand lines."
+    },
+    {
+     "text": "Its fix usually edits a single function, changing about 15 lines, with a single fail-to-pass test and 51 pass-to-pass tests guarding existing behavior.",
+     "spoken": "Its fix usually edits a single function, changing about fifteen lines, with a single fail-to-pass test and fifty-one pass-to-pass tests guarding existing behavior."
+    },
+    {
+     "text": "And 40% of tasks have at least two fail-to-pass tests.",
+     "spoken": "And forty percent of tasks have at least two fail-to-pass tests."
+    },
+    {
+     "text": "What kind of work is it? The authors checked the labels on the linked issues.",
+     "spoken": "What kind of work is it? The authors checked the labels on the linked issues."
+    },
+    {
+     "text": "Among 2,289 labels, 442 were bug labels, 167 feature labels, and 39 regression labels.",
+     "spoken": "Among two thousand two hundred and eighty-nine labels, four hundred and forty-two were bug labels, one hundred and sixty-seven feature labels, and thirty-nine regression labels."
+    },
+    {
+     "text": "Most tasks are bug fixes, but not all of them.",
+     "spoken": "Most tasks are bug fixes, but not all of them."
+    },
+    {
+     "text": "One more detail. Some issues include images.",
+     "spoken": "One more detail. Some issues include images."
+    },
+    {
+     "text": "Only 2% of all tasks do, but 32% of Matplotlib tasks and 10% of Seaborn tasks have images embedded in the issue text.",
+     "spoken": "Only two percent of all tasks do, but thirty-two percent of Mat-plot-lib tasks and ten percent of Seaborn tasks have images embedded in the issue text."
+    },
+    {
+     "text": "A text-only model simply can't see them.",
+     "spoken": "A text-only model simply can't see them."
+    },
+    {
+     "text": "Alongside the main test set, the authors released three more pieces.",
+     "spoken": "Alongside the main test set, the authors released three more pieces."
+    },
+    {
+     "text": "SWE-bench Lite: 300 tasks, sampled to be more self-contained and focused on functional bug fixes, covering 11 of the 12 repositories.",
+     "spoken": "swee-bench Lite: three hundred tasks, sampled to be more self-contained and focused on functional bug fixes, covering eleven of the twelve repositories."
+    },
+    {
+     "text": "A development set of 225 tasks, from 6 other repositories.",
+     "spoken": "A development set of two hundred and twenty-five tasks, from six other repositories."
+    },
+    {
+     "text": "And a training set, SWE-bench-train: about 19,000 issue and pull request pairs from 37 other repositories, with no overlap with the evaluation repositories.",
+     "spoken": "And a training set, swee-bench train: about nineteen thousand issue and pull request pairs from thirty-seven other repositories, with no overlap with the evaluation repositories."
+    },
+    {
+     "text": "Because the whole pipeline is automatic, the benchmark can also be refreshed with issues created after a model's training date.",
+     "spoken": "Because the whole pipeline is automatic, the benchmark can also be refreshed with issues created after a model's training date."
+    }
+   ]
+  },
+  {
+   "key": "B08_context",
+   "title": "Retrieval: BM25 vs oracle",
+   "sentences": [
+    {
+     "text": "Now the experiments. The first obstacle is size.",
+     "spoken": "Now the experiments. The first obstacle is size."
+    },
+    {
+     "text": "A codebase averages 438,000 lines. That's far more than any of the models tested could read at once.",
+     "spoken": "A codebase averages four hundred and thirty-eight thousand lines. That's far more than any of the models tested could read at once."
+    },
+    {
+     "text": "So before a model can fix anything, something has to choose which files to show it.",
+     "spoken": "So before a model can fix anything, something has to choose which files to show it."
+    },
+    {
+     "text": "The authors used a classic search method called BM25. It scores every file against the issue text, and the top files are added to the prompt until a token limit is reached.",
+     "spoken": "The authors used a classic search method called B M twenty-five. It scores every file against the issue text, and the top files are added to the prompt until a token limit is reached."
+    },
+    {
+     "text": "Here is the scoring formula. For each word in the issue, BM25 rewards files that contain it often, rewards rare words more than common ones, and discounts very long files.",
+     "spoken": "Here is the scoring formula. For each word in the issue, B M twenty-five rewards files that contain it often, rewards rare words more than common ones, and discounts very long files."
+    },
+    {
+     "text": "The authors also prepended each file's path to its contents, so a file named in the issue is easier to find.",
+     "spoken": "The authors also prepended each file's path to its contents, so a file named in the issue is easier to find."
+    },
+    {
+     "text": "They tried three limits: 13,000, 27,000 and 50,000 tokens.",
+     "spoken": "They tried three limits: thirteen thousand, twenty-seven thousand and fifty thousand tokens."
+    },
+    {
+     "text": "For comparison, they also ran an oracle setting, where the model is simply given the files that the real fix edited.",
+     "spoken": "For comparison, they also ran an oracle setting, where the model is simply given the files that the real fix edited."
+    },
+    {
+     "text": "That's unrealistic, because a real engineer doesn't know in advance which files need changing. But it shows what happens when retrieval is perfect.",
+     "spoken": "That's unrealistic, because a real engineer doesn't know in advance which files need changing. But it shows what happens when retrieval is perfect."
+    },
+    {
+     "text": "How good was BM25? Table 3 compares what it retrieved with the oracle files.",
+     "spoken": "How good was B M twenty-five? Table three compares what it retrieved with the oracle files."
+    },
+    {
+     "text": "At the 27,000-token limit, BM25 retrieved every one of the oracle files in about 40% of tasks.",
+     "spoken": "At the twenty-seven thousand-token limit, B M twenty-five retrieved every one of the oracle files in about forty percent of tasks."
+    },
+    {
+     "text": "But in almost half of the tasks, it retrieved none of them.",
+     "spoken": "But in almost half of the tasks, it retrieved none of them."
+    },
+    {
+     "text": "So in roughly half the tasks, the model was never shown a file it needed to change.",
+     "spoken": "So in roughly half the tasks, the model was never shown a file it needed to change."
+    },
+    {
+     "text": "The models' own context windows add a second limit, shown in Table 4.",
+     "spoken": "The models' own context windows add a second limit, shown in Table four."
+    },
+    {
+     "text": "ChatGPT-3.5 accepted 16,385 tokens, GPT-4 32,768, and Claude 2 100,000.",
+     "spoken": "Chat GPT three point five accepted sixteen thousand three hundred and eighty-five tokens, GPT four thirty-two thousand seven hundred and sixty-eight, and Claude two one hundred thousand."
+    },
+    {
+     "text": "Even in the oracle setting, the needed files fit into ChatGPT-3.5's window for only 58.1% of tasks, compared with 96.4% for Claude 2.",
+     "spoken": "Even in the oracle setting, the needed files fit into Chat GPT three point five's window for only fifty-eight point one percent of tasks, compared with ninety-six point four percent for Claude two."
+    },
+    {
+     "text": "Then the prompt itself. Appendix D gives the template.",
+     "spoken": "Then the prompt itself. Appendix D gives the template."
+    },
+    {
+     "text": "It has a short instruction, the issue text, the retrieved files, an example of the patch format, and a request to answer with a single patch that can be applied with git apply.",
+     "spoken": "It has a short instruction, the issue text, the retrieved files, an example of the patch format, and a request to answer with a single patch that can be applied with git apply."
+    },
+    {
+     "text": "Each model generated one patch per task, with greedy decoding. No retries, and no second attempts.",
+     "spoken": "Each model generated one patch per task, with greedy decoding. No retries, and no second attempts."
+    }
+   ]
+  },
+  {
+   "key": "B09_models",
+   "title": "Models and SWE-Llama (LoRA)",
+   "sentences": [
+    {
+     "text": "The models were ChatGPT-3.5, GPT-4 and Claude 2, plus two open models the authors trained themselves, called SWE-Llama.",
+     "spoken": "The models were Chat GPT three point five, GPT four and Claude two, plus two open models the authors trained themselves, called swee-llama."
+    },
+    {
+     "text": "The latest arXiv version of the paper also includes Claude 3 Opus and GPT-4-turbo in its main results table.",
+     "spoken": "The latest arXiv version of the paper also includes Claude three Opus and GPT four turbo in its main results table."
+    },
+    {
+     "text": "One caveat: for budget reasons, GPT-4 was evaluated on a random 25% subset of the tasks in some settings.",
+     "spoken": "One caveat: for budget reasons, GPT four was evaluated on a random twenty-five percent subset of the tasks in some settings."
+    },
+    {
+     "text": "Why train SWE-Llama? At the time, only the CodeLlama models could handle such long inputs, but off the shelf they didn't follow the instructions, and produced placeholders or unrelated code.",
+     "spoken": "Why train swee-llama? At the time, only the Code Llama models could handle such long inputs, but off the shelf they didn't follow the instructions, and produced placeholders or unrelated code."
+    },
+    {
+     "text": "So the authors fine-tuned CodeLlama-Python at 7 and 13 billion parameters, on SWE-bench-train.",
+     "spoken": "So the authors fine-tuned Code Llama Python at seven and thirteen billion parameters, on swee-bench train."
+    },
+    {
+     "text": "The input is the issue plus the relevant code files, and the target output is the gold patch.",
+     "spoken": "The input is the issue plus the relevant code files, and the target output is the gold patch."
+    },
+    {
+     "text": "They used LoRA, which freezes the original weights and learns a small, low-rank update on top of them.",
+     "spoken": "They used Lora, which freezes the original weights and learns a small, low-rank update on top of them."
+    },
+    {
+     "text": "The update is the product of two thin matrices, B and A, of rank r, scaled by alpha over r. The paper uses r equal to 16 and alpha equal to 16, on the query, key, value and output projections of every attention layer.",
+     "spoken": "The update is the product of two thin matrices, B and A, of rank r, scaled by alpha over r. The paper uses r equal to sixteen and alpha equal to sixteen, on the query, key, value and output projections of every attention layer."
+    },
+    {
+     "text": "Training used a learning rate of 6e-4, batches of 32 sequences, and up to 4 epochs.",
+     "spoken": "Training used a learning rate of six times ten to the minus four, batches of thirty-two sequences, and up to four epochs."
+    },
+    {
+     "text": "Sequences longer than 30,000 tokens were excluded, which cut the training set from about 19,000 instances to 10,000.",
+     "spoken": "Sequences longer than thirty thousand tokens were excluded, which cut the training set from about nineteen thousand instances to ten thousand."
+    },
+    {
+     "text": "SWE-Llama 7b trained in 20 hours on 4 A100 GPUs, and the 13b model in 47 hours on 8.",
+     "spoken": "swee-llama seven B trained in twenty hours on four A one hundred GPUs, and the thirteen B model in forty-seven hours on eight."
+    },
+    {
+     "text": "Note one detail: SWE-Llama was trained with oracle files as its context. That becomes important in a moment.",
+     "spoken": "Note one detail: swee-llama was trained with oracle files as its context. That becomes important in a moment."
+    }
+   ]
+  },
+  {
+   "key": "B10_results",
+   "title": "Results",
+   "sentences": [
+    {
+     "text": "Now the results. This is Table 5, with BM25 retrieval.",
+     "spoken": "Now the results. This is Table five, with B M twenty-five retrieval."
+    },
+    {
+     "text": "Claude 2, which the abstract calls the best-performing model, resolved just under 2% of tasks. The abstract gives 1.96%; Table 5 lists 1.97%.",
+     "spoken": "Claude two, which the abstract calls the best-performing model, resolved just under two percent of tasks. The abstract gives one point nine six percent; Table five lists one point nine seven percent."
+    },
+    {
+     "text": "ChatGPT-3.5 resolved 0.17%, and GPT-4-turbo 1.31%.",
+     "spoken": "Chat GPT three point five resolved zero point one seven percent, and GPT four turbo one point three one percent."
+    },
+    {
+     "text": "Both SWE-Llama models resolved 0.70%.",
+     "spoken": "Both swee-llama models resolved zero point seven percent."
+    },
+    {
+     "text": "Claude 3 Opus, which the abstract doesn't mention, reached 3.79%.",
+     "spoken": "Claude three Opus, which the abstract doesn't mention, reached three point seven nine percent."
+    },
+    {
+     "text": "On the smaller Lite subset the picture is similar: 4.33% for Claude 3 Opus, and 3.00% for Claude 2.",
+     "spoken": "On the smaller Lite subset the picture is similar: four point three three percent for Claude three Opus, and three percent for Claude two."
+    },
+    {
+     "text": "Now look at the apply column. Only 43.07% of Claude 2's patches could even be applied to the code.",
+     "spoken": "Now look at the apply column. Only forty-three point zero seven percent of Claude two's patches could even be applied to the code."
+    },
+    {
+     "text": "More than half of its answers failed before a single test ran.",
+     "spoken": "More than half of its answers failed before a single test ran."
+    },
+    {
+     "text": "The fine-tuned SWE-Llama patches applied more often, 51.74% and 53.62%, but they still resolved fewer tasks.",
+     "spoken": "The fine-tuned swee-llama patches applied more often, fifty-one point seven four percent and fifty-three point six two percent, but they still resolved fewer tasks."
+    },
+    {
+     "text": "Table 14 in the appendix counts how many of the patches that did apply needed the automatic repair step first.",
+     "spoken": "Table fourteen in the appendix counts how many of the patches that did apply needed the automatic repair step first."
+    },
+    {
+     "text": "For GPT-4 with BM25, 69.41% of them had to be repaired. For SWE-Llama 13b, 30.0%.",
+     "spoken": "For GPT four with B M twenty-five, sixty-nine point four one percent of them had to be repaired. For swee-llama thirteen B, thirty percent."
+    },
+    {
+     "text": "The authors read this as fine-tuning helping SWE-Llama produce well-formed patches, while the closed models struggled with structured output.",
+     "spoken": "The authors read this as fine-tuning helping swee-llama produce well-formed patches, while the closed models struggled with structured output."
+    },
+    {
+     "text": "Now give the models perfect retrieval. With oracle files, Claude 2 rises to 4.80%.",
+     "spoken": "Now give the models perfect retrieval. With oracle files, Claude two rises to four point eight percent."
+    },
+    {
+     "text": "SWE-Llama 13b reaches 3.97%, and 7b reaches 3.01%. Trained on oracle context, SWE-Llama does much better when it gets that kind of context.",
+     "spoken": "swee-llama thirteen B reaches three point nine seven percent, and seven B reaches three point zero one percent. Trained on oracle context, swee-llama does much better when it gets that kind of context."
+    },
+    {
+     "text": "GPT-4, on its 25% subset, gets 1.74%, and ChatGPT-3.5 gets 0.52%.",
+     "spoken": "GPT four, on its twenty-five percent subset, gets one point seven four percent, and Chat GPT three point five gets zero point five two percent."
+    },
+    {
+     "text": "The authors went one step further, with an oracle-collapsed setting: the oracle files, but with everything more than 15 lines away from the real edits collapsed.",
+     "spoken": "The authors went one step further, with an oracle-collapsed setting: the oracle files, but with everything more than fifteen lines away from the real edits collapsed."
+    },
+    {
+     "text": "Claude 2 improves again, to 5.93%, and GPT-4 to 3.40%. Claude 3 Opus reaches 9.39%.",
+     "spoken": "Claude two improves again, to five point nine three percent, and GPT four to three point four percent. Claude three Opus reaches nine point three nine percent."
+    },
+    {
+     "text": "Even with the right files and only the relevant lines, most issues stay unresolved.",
+     "spoken": "Even with the right files and only the relevant lines, most issues stay unresolved."
+    }
+   ]
+  },
+  {
+   "key": "B11_hard",
+   "title": "What makes tasks hard",
+   "sentences": [
+    {
+     "text": "Which tasks are hard? Figure 4 breaks the oracle results down by repository.",
+     "spoken": "Which tasks are hard? Figure four breaks the oracle results down by repository."
+    },
+    {
+     "text": "The models rise and fall together across repositories.",
+     "spoken": "The models rise and fall together across repositories."
+    },
+    {
+     "text": "Table 19 gives the numbers. Requests is the easiest for Claude 2, at 15.91%.",
+     "spoken": "Table nineteen gives the numbers. Requests is the easiest for Claude two, at fifteen point nine one percent."
+    },
+    {
+     "text": "On Seaborn, none of the models resolves a single task.",
+     "spoken": "On Seaborn, none of the models resolves a single task."
+    },
+    {
+     "text": "But the models don't solve the same tasks. With oracle files, Claude 2 resolves 110 tasks and SWE-Llama 13b resolves 91.",
+     "spoken": "But the models don't solve the same tasks. With oracle files, Claude two resolves one hundred and ten tasks and swee-llama thirteen B resolves ninety-one."
+    },
+    {
+     "text": "Yet Claude 2 solves only 42% of the tasks that SWE-Llama solves.",
+     "spoken": "Yet Claude two solves only forty-two percent of the tasks that swee-llama solves."
+    },
+    {
+     "text": "The strongest pattern is context length. Figure 5 groups Claude 2's tasks by how long the input was.",
+     "spoken": "The strongest pattern is context length. Figure five groups Claude two's tasks by how long the input was."
+    },
+    {
+     "text": "As the total input gets longer, the share of tasks resolved drops considerably.",
+     "spoken": "As the total input gets longer, the share of tasks resolved drops considerably."
+    },
+    {
+     "text": "Tables 2 and 3 show the same effect with BM25. Going from 13,000 to 50,000 tokens, the average recall of the oracle files rises from 29.58% to 51.06%.",
+     "spoken": "Tables two and three show the same effect with B M twenty-five. Going from thirteen thousand to fifty thousand tokens, the average recall of the oracle files rises from twenty-nine point five eight percent to fifty-one point zero six percent."
+    },
+    {
+     "text": "But Claude 2's resolve rate falls, from 1.96% to 1.22%.",
+     "spoken": "But Claude two's resolve rate falls, from one point nine six percent to one point two two percent."
+    },
+    {
+     "text": "More of the right code, and worse results.",
+     "spoken": "More of the right code, and worse results."
+    },
+    {
+     "text": "The authors' explanation: the models get distracted by extra context, and struggle to localize the code that needs to change.",
+     "spoken": "The authors' explanation: the models get distracted by extra context, and struggle to localize the code that needs to change."
+    },
+    {
+     "text": "What about memorization? These models were trained on public code, and these repositories are public.",
+     "spoken": "What about memorization? These models were trained on public code, and these repositories are public."
+    },
+    {
+     "text": "Table 7 splits the oracle results into tasks from before 2023 and after. Claude 2 gets 4.87% before and 4.23% after. SWE-Llama 13b gets 3.98% and 3.85%.",
+     "spoken": "Table seven splits the oracle results into tasks from before twenty twenty-three and after. Claude two gets four point eight seven percent before and four point two three percent after. swee-llama thirteen B gets three point nine eight percent and three point eight five percent."
+    },
+    {
+     "text": "Little difference, except for GPT-4, which falls from 1.96% to 0.0%, on its 25% subset.",
+     "spoken": "Little difference, except for GPT four, which falls from one point nine six percent to zero percent, on its twenty-five percent subset."
+    },
+    {
+     "text": "The authors take this as encouraging: the models don't seem to solve tasks simply by recalling a newer version of the code.",
+     "spoken": "The authors take this as encouraging: the models don't seem to solve tasks simply by recalling a newer version of the code."
+    }
+   ]
+  },
+  {
+   "key": "B12_fail",
+   "title": "How models fail",
+   "sentences": [
+    {
+     "text": "Why ask for patches rather than whole files? The authors tested that too.",
+     "spoken": "Why ask for patches rather than whole files? The authors tested that too."
+    },
+    {
+     "text": "Asked to regenerate entire files instead, Claude 2 resolved 2.2% with oracle files, compared with 4.8% when writing patches.",
+     "spoken": "Asked to regenerate entire files instead, Claude two resolved two point two percent with oracle files, compared with four point eight percent when writing patches."
+    },
+    {
+     "text": "Even on the shorter half of the tasks, whole files reached 3.9%, against 7.8% for patches.",
+     "spoken": "Even on the shorter half of the tasks, whole files reached three point nine percent, against seven point eight percent for patches."
+    },
+    {
+     "text": "When patches do apply, they are small. Table 8 compares them with the gold patches for the same tasks.",
+     "spoken": "When patches do apply, they are small. Table eight compares them with the gold patches for the same tasks."
+    },
+    {
+     "text": "Claude 2's applied patches average 19.6 lines. The gold patches for those same tasks average 44.1.",
+     "spoken": "Claude two's applied patches average nineteen point six lines. The gold patches for those same tasks average forty-four point one."
+    },
+    {
+     "text": "For every model, the applied patches are shorter than the gold patches for the same tasks, and they almost never edit more than one file.",
+     "spoken": "For every model, the applied patches are shorter than the gold patches for the same tasks, and they almost never edit more than one file."
+    },
+    {
+     "text": "The appendix also sorts every applied patch into six outcomes, by what happened to the fail-to-pass and pass-to-pass tests. This is Table 22.",
+     "spoken": "The appendix also sorts every applied patch into six outcomes, by what happened to the fail-to-pass and pass-to-pass tests. This is Table twenty-two."
+    },
+    {
+     "text": "Resolved means everything passes. Breaking resolved means every fail-to-pass test passes, but an existing test broke.",
+     "spoken": "Resolved means everything passes. Breaking resolved means every fail-to-pass test passes, but an existing test broke."
+    },
+    {
+     "text": "Partially resolved means nothing broke, but only some of the fail-to-pass tests pass. Work in progress means some pass, and something else broke.",
+     "spoken": "Partially resolved means nothing broke, but only some of the fail-to-pass tests pass. Work in progress means some pass, and something else broke."
+    },
+    {
+     "text": "No-op means no fail-to-pass test passes, and nothing breaks. And regression means no fail-to-pass test passes, and something that used to work now fails.",
+     "spoken": "No-op means no fail-to-pass test passes, and nothing breaks. And regression means no fail-to-pass test passes, and something that used to work now fails."
+    },
+    {
+     "text": "Table 23 counts these outcomes. For Claude 2, 1,078 patches applied, and 110 of them resolved the task.",
+     "spoken": "Table twenty-three counts these outcomes. For Claude two, one thousand and seventy-eight patches applied, and one hundred and ten of them resolved the task."
+    },
+    {
+     "text": "471 were no-ops, and 436 were regressions.",
+     "spoken": "four hundred and seventy-one were no-ops, and four hundred and thirty-six were regressions."
+    },
+    {
+     "text": "The partial outcomes are small: 26 breaking resolved, 15 partially resolved, and 20 work in progress.",
+     "spoken": "The partial outcomes are small: twenty-six breaking resolved, fifteen partially resolved, and twenty work in progress."
+    },
+    {
+     "text": "So when a model fails, it usually isn't close. The patch either does nothing to the bug, or breaks something that worked.",
+     "spoken": "So when a model fails, it usually isn't close. The patch either does nothing to the bug, or breaks something that worked."
+    },
+    {
+     "text": "The authors suggest that feedback from an execution environment, letting a model run the tests and keep editing, could help.",
+     "spoken": "The authors suggest that feedback from an execution environment, letting a model run the tests and keep editing, could help."
+    }
+   ]
+  },
+  {
+   "key": "B13_cases",
+   "title": "Case studies",
+   "sentences": [
+    {
+     "text": "Let's look at real failures. Figure 6 shows a task from Sphinx, the documentation generator.",
+     "spoken": "Let's look at real failures. Figure six shows a task from Sphinx, the documentation generator."
+    },
+    {
+     "text": "The issue: a setting called napoleon use param should also affect the Other Parameters section of a docstring, but it doesn't.",
+     "spoken": "The issue: a setting called napoleon use param should also affect the Other Parameters section of a docstring, but it doesn't."
+    },
+    {
+     "text": "The model was given the issue, the instructions and the full files the real fix edited: 1,558 lines of context, or 20,882 tokens.",
+     "spoken": "The model was given the issue, the instructions and the full files the real fix edited: one thousand five hundred and fifty-eight lines of context, or twenty thousand eight hundred and eighty-two tokens."
+    },
+    {
+     "text": "It found the right function, in the right file. But its patch makes the section always behave as if the setting were turned on.",
+     "spoken": "It found the right function, in the right file. But its patch makes the section always behave as if the setting were turned on."
+    },
+    {
+     "text": "The real fix checks the setting first, and keeps the old behavior when it's off.",
+     "spoken": "The real fix checks the setting first, and keeps the old behavior when it's off."
+    },
+    {
+     "text": "The tests caught it at once: 45 passed and 2 failed, including a test that runs with the setting turned off.",
+     "spoken": "The tests caught it at once: forty-five passed and two failed, including a test that runs with the setting turned off."
+    },
+    {
+     "text": "Right place, wrong logic.",
+     "spoken": "Right place, wrong logic."
+    },
+    {
+     "text": "The second example shows something tests can't catch. Figure 10 is a task from the Requests library.",
+     "spoken": "The second example shows something tests can't catch. Figure ten is a task from the Requests library."
+    },
+    {
+     "text": "The issue: a proxy address with a missing slash produces a misleading error.",
+     "spoken": "The issue: a proxy address with a missing slash produces a misleading error."
+    },
+    {
+     "text": "Claude 2's patch solves it, and it's shorter than the real fix: 6 lines instead of 11, in one file instead of two.",
+     "spoken": "Claude two's patch solves it, and it's shorter than the real fix: six lines instead of eleven, in one file instead of two."
+    },
+    {
+     "text": "But it places a new condition inside a large, widely used class, HTTPAdapter.",
+     "spoken": "But it places a new condition inside a large, widely used class, HTTP adapter."
+    },
+    {
+     "text": "The authors measured this with cyclomatic complexity, which counts the independent paths through a piece of code.",
+     "spoken": "The authors measured this with cyclomatic complexity, which counts the independent paths through a piece of code."
+    },
+    {
+     "text": "For a control-flow graph, it's the number of edges, minus the number of nodes, plus two for each connected part.",
+     "spoken": "For a control-flow graph, it's the number of edges, minus the number of nodes, plus two for each connected part."
+    },
+    {
+     "text": "The model's patch raises the complexity of HTTPAdapter from 3 to 5. The real fix changes a simpler function, from 2 to 3, and defines a new error type for the invalid proxy.",
+     "spoken": "The model's patch raises the complexity of HTTP adapter from three to five. The real fix changes a simpler function, from two to three, and defines a new error type for the invalid proxy."
+    },
+    {
+     "text": "Both pass the tests. But they are not equally good code, and the tests can't tell the difference.",
+     "spoken": "Both pass the tests. But they are not equally good code, and the tests can't tell the difference."
+    },
+    {
+     "text": "Across their case studies, the authors see the same trends.",
+     "spoken": "Across their case studies, the authors see the same trends."
+    },
+    {
+     "text": "Models write primitive Python code, and rarely make use of existing libraries or the rest of the codebase.",
+     "spoken": "Models write primitive Python code, and rarely make use of existing libraries or the rest of the codebase."
+    },
+    {
+     "text": "They take a greedy approach: solve exactly the stated problem, with little regard for code style or the project's conventions.",
+     "spoken": "They take a greedy approach: solve exactly the stated problem, with little regard for code style or the project's conventions."
+    },
+    {
+     "text": "The human fixes, in contrast, often make structural improvements that also head off future issues.",
+     "spoken": "The human fixes, in contrast, often make structural improvements that also head off future issues."
+    },
+    {
+     "text": "And one Seaborn task shows a problem no text-only model could solve: the bug is shown in an image, and the authors attribute the failure directly to that.",
+     "spoken": "And one Seaborn task shows a problem no text-only model could solve: the bug is shown in an image, and the authors attribute the failure directly to that."
+    }
+   ]
+  },
+  {
+   "key": "B14_limits",
+   "title": "Limitations",
+   "sentences": [
+    {
+     "text": "Now, what this paper does not show.",
+     "spoken": "Now, what this paper does not show."
+    },
+    {
+     "text": "One: every task is in Python. The authors hope to extend the collection process to other languages.",
+     "spoken": "One: every task is in Python. The authors hope to extend the collection process to other languages."
+    },
+    {
+     "text": "Two: the baselines are deliberately simple. Retrieve some files, generate one patch. No agents, no tools, no running the tests. The authors say so, and invite agent-based approaches.",
+     "spoken": "Two: the baselines are deliberately simple. Retrieve some files, generate one patch. No agents, no tools, no running the tests. The authors say so, and invite agent-based approaches."
+    },
+    {
+     "text": "Three: passing tests isn't the same as good code. The authors write that execution-based testing alone is insufficient, because model solutions can be less comprehensive, efficient or readable than human ones.",
+     "spoken": "Three: passing tests isn't the same as good code. The authors write that execution-based testing alone is insufficient, because model solutions can be less comprehensive, efficient or readable than human ones."
+    },
+    {
+     "text": "Four: some results come from subsets. GPT-4 was evaluated on a random 25% of the tasks in some settings, for budget reasons.",
+     "spoken": "Four: some results come from subsets. GPT four was evaluated on a random twenty-five percent of the tasks in some settings, for budget reasons."
+    },
+    {
+     "text": "And five: the date analysis only covers the models tested here. It can't speak for models trained later, on newer public code.",
+     "spoken": "And five: the date analysis only covers the models tested here. It can't speak for models trained later, on newer public code."
+    },
+    {
+     "text": "Good benchmark papers tell you where their numbers stop meaning something. This one does.",
+     "spoken": "Good benchmark papers tell you where their numbers stop meaning something. This one does."
+    }
+   ]
+  },
+  {
+   "key": "B15_closing",
+   "title": "Why it matters",
+   "sentences": [
+    {
+     "text": "So why does this paper matter?",
+     "spoken": "So why does this paper matter?"
+    },
+    {
+     "text": "Because it asks a harder, more honest question. Not, can a model write a function? But, can it resolve a real issue in a real project, as judged by that project's own tests?",
+     "spoken": "Because it asks a harder, more honest question. Not, can a model write a function? But, can it resolve a real issue in a real project, as judged by that project's own tests?"
+    },
+    {
+     "text": "The fail-to-pass rule is the heart of it. A fix only counts if it turns a failing test into a passing one, without breaking anything else. That makes the result checkable by a machine.",
+     "spoken": "The fail-to-pass rule is the heart of it. A fix only counts if it turns a failing test into a passing one, without breaking anything else. That makes the result checkable by a machine."
+    },
+    {
+     "text": "It also gave the field a number to push. The study from my previous video notes that, as of May 2025, agents powered by Claude 4 Sonnet had passed 70% on SWE-bench.",
+     "spoken": "It also gave the field a number to push. The study from my previous video notes that, as of May two thousand and twenty-five, agents powered by Claude four Sonnet had passed seventy percent on swee-bench."
+    },
+    {
+     "text": "That's not a like-for-like comparison: different models, agents that can run code, and a different setup from this paper's simple baselines. But it shows how far the target moved.",
+     "spoken": "That's not a like-for-like comparison: different models, agents that can run code, and a different setup from this paper's simple baselines. But it shows how far the target moved."
+    },
+    {
+     "text": "The same test-based rule is also SWE-bench's blind spot.",
+     "spoken": "The same test-based rule is also swee-bench's blind spot."
+    },
+    {
+     "text": "A test can show that a bug is gone. It can't tell you whether the documentation still matches the code, or whether the fix is clean.",
+     "spoken": "A test can show that a bug is gone. It can't tell you whether the documentation still matches the code, or whether the fix is clean."
+    },
+    {
+     "text": "The authors of that other study make exactly this point: benchmarks like SWE-bench overlook documentation drift, style and reviewer negotiation, which together made up 52.4% of the revisions to agent pull requests in their data.",
+     "spoken": "The authors of that other study make exactly this point: benchmarks like swee-bench overlook documentation drift, style and reviewer negotiation, which together made up fifty-two point four percent of the revisions to agent pull requests in their data."
+    },
+    {
+     "text": "My read: the next step is benchmarks that verify more than behavior, including the parts of a change that tests don't reach.",
+     "spoken": "My read: the next step is benchmarks that verify more than behavior, including the parts of a change that tests don't reach."
+    },
+    {
+     "text": "The paper, the data and the code are linked in the description. Thanks for watching.",
+     "spoken": "The paper, the data and the code are linked in the description. Thanks for watching."
+    }
+   ]
+  }
+ ],
+ "source": "Claude (hand-checked in Claude Code)"
+}
