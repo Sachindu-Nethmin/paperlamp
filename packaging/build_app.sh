@@ -12,7 +12,10 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 DEST="${1:-$HOME/Applications}"
 PY="$(command -v python3)"
-BUILD="$HERE/build"
+# build outside the checkout: on an iCloud-synced Desktop, Finder metadata keeps appearing on new
+# files, and codesign refuses a bundle that has it
+BUILD="$(mktemp -d "${TMPDIR:-/tmp}/paperlamp-build.XXXXXX")"
+trap 'rm -rf "$BUILD"' EXIT
 APP="$BUILD/PaperLamp.app"
 SUPPORT="$HOME/Library/Application Support/PaperLamp"
 
@@ -38,7 +41,7 @@ iconutil -c icns "$BUILD/AppIcon.iconset" -o "$APP/Contents/Resources/AppIcon.ic
 rsync -a --exclude "__pycache__" "$HERE/app.py" "$HERE/paperlamp" "$HERE/ui" "$HERE/LICENSE" "$HERE/README.md" \
   "$APP/Contents/Resources/app/"
 xattr -cr "$APP"                                   # Finder metadata from the Desktop blocks signing
-codesign --force --deep -s - "$APP" >/dev/null 2>&1 || echo "  note: ad-hoc signing skipped"
+codesign --force --deep -s - "$APP" >/dev/null 2>&1 || { echo "  ad-hoc signing failed:"; codesign --force --deep -s - "$APP"; exit 1; }
 
 echo "Setting up app data in $SUPPORT"
 mkdir -p "$SUPPORT"
@@ -51,4 +54,6 @@ echo "Installing to $DEST"
 mkdir -p "$DEST"
 rm -rf "$DEST/PaperLamp.app"
 ditto "$APP" "$DEST/PaperLamp.app"            # keeps the signature intact
+codesign --verify --deep "$DEST/PaperLamp.app" && echo "  signature verified"
 echo "Done: $DEST/PaperLamp.app"
+pgrep -f "PaperLamp.app/Contents/MacOS/PaperLamp" >/dev/null && echo "PaperLamp is running: quit and reopen it to use the new build."
