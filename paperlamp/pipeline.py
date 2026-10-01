@@ -6,17 +6,19 @@ stage is kept in state.json, which the web UI polls.
 """
 import json, pathlib, re, shutil, threading, time, traceback, uuid
 
-from . import align, analyze, assemble, llm, pdf, script, tts, verify
+from . import align, analyze, assemble, llm, pdf, quiz, script, tts, verify
 from .speak import to_spoken
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 JOBS = ROOT / "jobs"
 STAGES = [("parse", "Read the PDF"), ("figures", "Find figures and tables"), ("meta", "Identify the paper"),
           ("notes", "Take notes on each section"), ("script", "Write the script"),
-          ("verify", "Check every number against the paper"), ("align", "Match sentences to the page"),
+          ("verify", "Check every number against the paper"),
+          ("quiz", "Write self-check questions"), ("align", "Match sentences to the page"),
           ("voice", "Record narration"), ("render", "Render and assemble the video")]
 DEFAULTS = dict(model=llm.DEFAULT_MODEL, minutes=8, voice="say", say_voice="", say_rate=175,
-                chatterbox_python="", voice_reference="", script_source="ollama")
+                chatterbox_python="", voice_reference="", script_source="ollama", quiz_in_video=3,
+                depth="summary")
 
 
 class Job:
@@ -80,8 +82,8 @@ class Job:
     def run(self):
         s = self.state["settings"]
         try:
-            for key, _ in STAGES:
-                st = self.state["stages"][key]
+            for key, label in STAGES:
+                st = self.state["stages"].setdefault(key, dict(label=label, status="pending", progress=0.0, msg=""))
                 if st["status"] in ("done", "skipped"):
                     continue
                 if s["script_source"] == "import" and key in ("meta", "notes", "script"):
@@ -112,15 +114,19 @@ class Job:
         cb(0, 3, f"{doc['pages']} pages")
         pages = pdf.page_texts(self.dir / "paper.pdf")
         (self.dir / "paper.txt").write_text("\n".join(pages), encoding="utf-8")
-        secs = pdf.sections(pages)
+        heads = pdf.headings(self.dir / "paper.pdf")        # outline or font-checked headings
+        secs = pdf.sections(pages, heads if sum(1 for h in heads if h.get("num")) >= 2 else None)
         cb(1, 3, f"{len(secs)} sections")
         full = "\n".join(pages)
         self.write("doc.json", dict(pages=doc["pages"], pdf_title=doc["title"], license=pdf.license_hint(full),
                                     first_page=pages[0][:4000] if pages else "",
                                     sections=[dict(sc, words=len(sc["text"].split())) for sc in secs]))
-        # the script never uses related work, acknowledgements etc., so don't spend model time on them
-        self.write("chunks.json", pdf.chunks([sc for sc in secs if not sc["appendix"]
-                                              and not script.SKIP.search(sc["title"])]))
+        # the script never uses acknowledgements etc. (nor related work and appendices in a
+        # summary), so don't spend model time on them
+        whole = self.state["settings"].get("depth") == "full"
+        skip = script.skip_re(self.state["settings"].get("depth"))
+        self.write("chunks.json", pdf.chunks([sc for sc in secs if (whole or not sc["appendix"])
+                                              and not skip.search(sc["title"] + " " + sc["parent"])]))
         idx = align.build_index(self.dir / "paper.pdf", doc["pages"])
         self.write("index.json", idx)
         cb(3, 3, f"{doc['pages']} pages · {len(full.split()):,} words · {len(secs)} sections")
@@ -140,7 +146,8 @@ class Job:
     def stage_script(self, cb):
         s = self.state["settings"]
         t0 = time.time()
-        sc = script.write(self.read("meta.json"), self.read("notes.json"), float(s["minutes"]), s["model"], cb)
+        sc = script.write(self.read("meta.json"), self.read("notes.json"), float(s["minutes"]), s["model"], cb,
+                          depth=s.get("depth", "summary"), figures=self.read("figs.json"))
         sc["seconds"] = round(time.time() - t0, 1)
         self.write("script.json", sc)
 
@@ -149,6 +156,7 @@ class Job:
         if s["script_source"] == "import" and not (self.dir / "script.json").exists():
             shutil.copy(self.dir / "script_import.json", self.dir / "script.json")
         sc = self.read("script.json")
+        sc["chapters"] = [c for c in sc["chapters"] if c["key"] != "quiz"]     # the quiz stage rebuilds it
         notes = self.read("notes.json") if (self.dir / "notes.json").exists() else []
         if s["script_source"] == "import":             # report only: don't rewrite someone else's script
             known = verify.paper_numbers((self.dir / "paper.txt").read_text())
@@ -162,15 +170,36 @@ class Job:
             sc["verification"] = st
             cb(1, 1, f"{st['ok']} ok · {st['flagged']} flagged (imported script, not rewritten)")
         else:
-            sc = verify.run(sc, (self.dir / "paper.txt").read_text(), notes, s["model"], cb)
+            sc = verify.run(sc, (self.dir / "paper.txt").read_text(), notes, s["model"], cb,
+                            figures=self.read("figs.json"), index=self.read("index.json"))
         self.write("script.json", sc)
+
+    def stage_quiz(self, cb):
+        s = self.state["settings"]
+        sc = self.read("script.json")
+        notes = self.read("notes.json") if (self.dir / "notes.json").exists() else []
+        said = [x["text"] for ch in sc["chapters"] if ch["key"] not in ("quiz", "outro") for x in ch["sentences"]]
+        meta = sc.get("meta") or {}
+        qz = quiz.make(meta, notes, said, (self.dir / "paper.txt").read_text(), s["model"], cb)
+        self.write("quiz.json", qz)
+        (self.dir / "out").mkdir(exist_ok=True)
+        (self.dir / "out/quiz.md").write_text(quiz.to_markdown(qz, meta), encoding="utf-8")
+        sc["chapters"] = [ch for ch in sc["chapters"] if ch["key"] != "quiz"]      # re-runs replace it
+        ch = quiz.video_chapter(qz, k=int(s.get("quiz_in_video", 3) or 0)) if s.get("quiz_in_video") else None
+        if ch:
+            at = next((i for i, c in enumerate(sc["chapters"]) if c["key"] == "outro"), len(sc["chapters"]))
+            sc["chapters"].insert(at, ch)
+        self.write("script.json", sc)
+        cb(1, 1, f"{len(qz['questions'])} questions · {len(qz['rejected'])} rejected"
+                 + (f" · {len(ch['sentences']) // 2} in the video" if ch else ""))
 
     def sentences(self):
         sc, out = self.read("script.json"), []
         for ci, ch in enumerate(sc["chapters"]):
             for si, x in enumerate(ch["sentences"]):
                 out.append(dict(id=f"c{ci:02d}_s{si:03d}", chapter=ch["title"], chapter_key=ch["key"], text=x["text"],
-                                spoken=x.get("spoken") or to_spoken(x["text"]), align=x.get("align")))
+                                spoken=x.get("spoken") or to_spoken(x["text"]), align=x.get("align"),
+                                card=x.get("card"), pause=x.get("pause", 0)))
         return out
 
     def stage_align(self, cb):
@@ -190,6 +219,8 @@ class Job:
         self.write("script.json", sc)
 
     def stage_voice(self, cb):
+        if self.state["settings"]["voice"] == "chatterbox":
+            llm.unload(self.state["settings"]["model"])     # the voice model needs that memory
         items = [(x["id"], x["spoken"]) for x in self.sentences()]
         durs = tts.narrate(items, self.dir / "audio", self.state["settings"], cb)
         self.write("durations.json", durs)
@@ -205,6 +236,7 @@ class Job:
         self.write_docs(sents, meta)
         self.state["outputs"] = dict(video="out/video.mp4", captions="out/captions.srt",
                                      description="out/description.txt", script="out/script.md",
+                                     quiz="out/quiz.md" if (self.dir / "out/quiz.md").exists() else None,
                                      seconds=total)
 
     def write_docs(self, sents, meta):
@@ -219,12 +251,17 @@ class Job:
         v = sc.get("verification", {})
         src = (f"Script written offline by the local model {sc.get('model', '')} (Ollama)"
                if sc.get("source") == "ollama" else f"Script: {sc.get('source', 'imported')}")
+        if sc.get("review"):                        # say who changed the model's draft, and how much
+            r = sc["review"]
+            src += f", then fact-checked against the paper by {r.get('by', 'a reviewer')} ({r.get('sentences_edited', 0)} sentences edited)"
         authors = ", ".join(meta.get("authors", []))
         desc = (f"{meta.get('one_line', '')}\n\nCHAPTERS\n" + "\n".join(chapters) +
                 f"\n\nPAPER\n{authors}. \"{meta.get('title', '')}\". {meta.get('venue', '')} {meta.get('year', '')}\n\n"
                 f"{src}. Every number in the narration was checked against the paper text "
                 f"({v.get('ok', 0)} sentences verified, {v.get('fixed', 0)} repaired, {v.get('dropped', 0)} removed). "
-                "Pages shown are from the paper itself.\n")
+                "Pages shown are from the paper itself. "
+                + (f"Paper license: {lic}.\n" if (lic := self.read("doc.json").get("license")) else
+                   "Check the paper's license before publishing this video.\n"))
         (self.dir / "out/description.txt").write_text(desc, encoding="utf-8")
         md = [f"# {meta.get('title', '')}", "", f"_{src}_", ""]
         cur = None

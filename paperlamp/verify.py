@@ -43,7 +43,31 @@ def check(sentence, known):
     return [n for n in numbers_in(sentence) if norm(n) not in known]
 
 
-def run(script, paper_text, notes, model, progress, tries=2):
+REF = re.compile(r"\b(Table|Figure|Fig\.)\s+(\d+)\b")
+REF_PHRASE = r"(?:As\s+)?(?:shown\s+in\s+)?{label}\s*(?:shows|reports|lists|indicates|presents|gives|summarizes|reveals)?\s*(?:that)?,?\s*"
+
+
+def check_labels(text, figures, index):
+    """A sentence may only cite 'Table N'/'Figure N' if that exists in the paper and
+    one of the sentence's numbers is printed on that figure's page. Otherwise the
+    citation is removed and the facts are kept."""
+    pages = {}
+    for f in figures:
+        pages[f["label"].lower()] = f["page"]
+    for m in list(REF.finditer(text)):
+        label = f"{'table' if m.group(1).lower().startswith('tab') else 'figure'} {m.group(2)}"
+        nums = {norm(n) for n in numbers_in(text)}
+        ok = label in pages and (not nums or any(
+            norm(n) in nums for ln in index if ln["page"] == pages[label] for n in numbers_in(ln["text"])))
+        if not ok:
+            pat = REF_PHRASE.format(label=re.escape(m.group(0)))
+            new = re.sub(pat, "", text, count=1, flags=re.I).strip()
+            if new and new != text:
+                text = new[0].upper() + new[1:]
+    return text
+
+
+def run(script, paper_text, notes, model, progress, tries=2, figures=(), index=()):
     known = paper_numbers(paper_text)
     facts = facts_text(notes, max_words=1200)
     all_s = [(ci, si) for ci, ch in enumerate(script["chapters"]) for si, _ in enumerate(ch["sentences"])]
@@ -55,6 +79,10 @@ def run(script, paper_text, notes, model, progress, tries=2):
         stats["numbers"] += len(numbers_in(s["text"]))
         stats["unverified_before"] += len(bad)
         s["original"] = s["text"]
+        relabelled = check_labels(s["text"], figures, index) if figures or index else s["text"]
+        if relabelled != s["text"]:
+            s["text"], s["label_fixed"] = relabelled, True
+            stats["labels_fixed"] = stats.get("labels_fixed", 0) + 1
         if not bad:
             s["status"] = "ok"; stats["ok"] += 1
             continue

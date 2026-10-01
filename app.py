@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Local web UI for paper2video — runs entirely on this machine.
+"""Local web UI for PaperLamp — runs entirely on this machine.
 
     python3 app.py            →  http://127.0.0.1:8765
 
@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 ROOT = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
-from p2v import llm, pipeline, tts  # noqa: E402
+from paperlamp import llm, pipeline, tts  # noqa: E402
 
 CONFIG = ROOT / "config.json"          # local defaults (voice paths etc.), not committed
 RUNNING = {}
@@ -30,7 +30,7 @@ def tools_status():
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "paper2video/1.0"
+    server_version = "PaperLamp/1.0"
 
     def log_message(self, *a):
         pass
@@ -53,6 +53,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json({"error": "not found"}, 404)
         size = path.stat().st_size
         ctype = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+        if path.suffix in (".md", ".txt", ".srt"):          # show scripts, quizzes and captions in the browser
+            ctype = "text/plain; charset=utf-8"
         rng = self.headers.get("Range")
         start, end = 0, size - 1
         if rng and (m := re.match(r"bytes=(\d*)-(\d*)", rng)):
@@ -155,9 +157,9 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    port = int(os.environ.get("P2V_PORT", 8765))
+    port = int(os.environ.get("PAPERLAMP_PORT", 8765))
     srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
-    print(f"paper2video running at http://127.0.0.1:{port}  (Ctrl+C to stop)")
+    print(f"PaperLamp running at http://127.0.0.1:{port}  (Ctrl+C to stop)")
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

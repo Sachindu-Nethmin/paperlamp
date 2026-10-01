@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Chatterbox voice-cloning server for p2v (runs in the Python that has chatterbox-tts).
+"""Chatterbox voice-cloning server for paperlamp (runs in the Python that has chatterbox-tts).
 
 Speaks a JSON-lines protocol on stdin/stdout so the model loads once per run:
     <-  {"text": "...", "out": "/tmp/a.wav", "exaggeration": 0.4, "cfg_weight": 0.5}
@@ -88,7 +88,7 @@ def main() -> int:
     import torch
     import torchaudio
 
-    device = os.environ.get("P2V_VOICE_DEVICE") or _pick_device(torch)
+    device = os.environ.get("PAPERLAMP_VOICE_DEVICE") or _pick_device(torch)
     _patch_torch_load(torch, device)
 
     from chatterbox.tts import ChatterboxTTS
@@ -106,7 +106,7 @@ def main() -> int:
         model = ChatterboxTTS.from_pretrained(device=device)
 
     # Embed the target voice once — every later generate() reuses these conds.
-    exaggeration = float(os.environ.get("P2V_VOICE_EXAGGERATION", "0.4"))
+    exaggeration = float(os.environ.get("PAPERLAMP_VOICE_EXAGGERATION", "0.4"))
     model.prepare_conditionals(ref, exaggeration=exaggeration)
     _log(f"ready — voice reference: {os.path.basename(ref)}")
     _reply(ok=True, ready=True, sr=model.sr, device=device)

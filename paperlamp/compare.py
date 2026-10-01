@@ -1,6 +1,6 @@
 """Compare two scripts for the same paper (e.g. local model vs Claude).
 
-    python3 -m p2v.compare paper.pdf A.script.json B.script.json [--names A B] [--out report.md]
+    python3 -m paperlamp.compare paper.pdf A.script.json B.script.json [--names A B] [--out report.md]
 
 All metrics are computed from the paper text itself — no model judges another:
   numbers verified   share of numeric mentions that occur in the paper

@@ -70,6 +70,9 @@ def run(script, idx, figures, progress):
     all_s = [s for ch in script["chapters"] for s in ch["sentences"]]
     k = 0
     for ch in script["chapters"]:
+        if ch["key"] in ("quiz", "outro"):              # shown as cards, not on the page
+            k += len(ch["sentences"])
+            continue
         home = _section_pages(idx, ch["title"])
         for s in ch["sentences"]:
             progress(k, len(all_s), "matching sentences to the page"); k += 1

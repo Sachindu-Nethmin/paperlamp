@@ -1,6 +1,6 @@
 ---
 name: paper-to-video
-description: Turn a research paper PDF into a narrated, captioned explainer video with this repo's offline pipeline (local Ollama model, PDF document-camera visuals, local voice). Use when the user wants a video, script or YouTube explainer made from a paper, or asks to run, resume or debug a paper2video job.
+description: Turn a research paper PDF into a narrated, captioned explainer video with this repo's offline pipeline (local Ollama model, PDF document-camera visuals, local voice). Use when the user wants a video, script or YouTube explainer made from a paper, or asks to run, resume or debug a PaperLamp job.
 ---
 
 # Paper → explainer video (offline)
@@ -12,8 +12,8 @@ macOS `say` or Chatterbox (voice). No internet or external AI API is used.
 
 - Web UI: `python3 app.py` → open http://127.0.0.1:8765, drop the PDF, press **Make video**.
   Each of the 9 stages has its own progress bar; outputs appear under the player.
-- CLI: `python3 -m p2v.cli paper.pdf --minutes 8 [--voice chatterbox --chatterbox-python PY --reference WAV]`
-- Resume or redo part of a job: `python3 -m p2v.cli --resume <job-id> --from <stage>`
+- CLI: `python3 -m paperlamp.cli paper.pdf --minutes 8 [--voice chatterbox --chatterbox-python PY --reference WAV]`
+- Resume or redo part of a job: `python3 -m paperlamp.cli --resume <job-id> --from <stage>`
   Stages: parse, figures, meta, notes, script, verify, align, voice, render.
 
 Outputs: `jobs/<id>/out/video.mp4`, `captions.srt`, `description.txt`, `script.md`,

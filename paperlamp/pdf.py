@@ -3,7 +3,7 @@
 Uses poppler's command-line tools (pdfinfo, pdftotext, pdftoppm), which ship with
 `brew install poppler`. Coordinates are PDF points, origin top-left.
 """
-import html, json, pathlib, re, subprocess
+import html, json, pathlib, re, subprocess, unicodedata
 
 import numpy as np
 from PIL import Image
@@ -36,30 +36,193 @@ def page_texts(pdf):
 
 HEAD_RE = re.compile(r"^\s{0,60}((?:\d{1,2}|[A-H])(?:\.\d{1,2}){0,2})\.?\s{1,16}((?:[A-Z]|[^\x00-\x7F])[^\n]{2,90})$")
 STOP_RE = re.compile(r"^\s*(R\s?EFERENCES|References|REFERENCES|Bibliography)\s*$")
+NUM_HEAD = re.compile(r"^((?:\d{1,2}|[A-H])(?:\.\d{1,2}){0,2})\.?\s+(\S.{1,90})$")
+SMALL = {"a", "an", "and", "as", "at", "by", "for", "from", "in", "of", "on", "or", "the", "to", "via", "vs", "with"}
 
 
-def sections(pages):
-    """Split the paper into numbered sections; drop references. Appendix kept, flagged."""
-    lines = "\n".join(pages).splitlines()
-    out, cur = [], dict(num="0", title="Front matter", lines=[])
-    in_appendix = False
+STYLED_FONT = re.compile(r"Bold|Bd|BX|Medi|Semi|Demi|Black|Heavy|Ital|Oblique|Slant|T[BI]$|-B$|-BI$")
+
+
+def squash(s):
+    """Letters and digits only, lower case; maths letters (𝑅𝑄1) become plain (rq1)."""
+    return re.sub(r"[^0-9a-z]", "", unicodedata.normalize("NFKC", s).lower())
+
+
+def headings(pdf):
+    """Section headings: from the PDF's own outline (bookmarks) when it has one,
+    otherwise found by font rather than by text alone.
+
+    A heading is a numbered line whose number is set at least at body-text size (so
+    labels inside figures don't count) and which is styled like a heading: bold,
+    italic, larger than the body, or in capitals. Small-caps headings, which
+    pdftotext splits into "I NTRODUCTION", are joined back from the glyph positions.
+    Returns [{page, num, title, key}] in reading order, plus {page, key: "appendix"}
+    where an Appendix heading starts. Empty if pdftohtml is unavailable.
+    """
+    import xml.etree.ElementTree as ET
+    try:
+        root = ET.fromstring(run(["pdftohtml", "-xml", "-i", "-q", "-nodrm", "-stdout", str(pdf)]))
+    except Exception:
+        return []
+    marks = []
+    for it in root.iter("item"):                          # the outline, in document order
+        t = re.sub(r"\s+", " ", "".join(it.itertext())).strip()
+        m = re.match(r"^((?:\d{1,2}|[A-H])(?:\.\d{1,2}){0,2})\.?\s+(\S.{1,200})$", t)
+        if m:
+            marks.append(dict(page=int(it.get("page", 0)), num=m.group(1), title=m.group(2),
+                              key=squash(m.group(1) + m.group(2))))
+        elif re.fullmatch(r"(?i)appendix|appendices|supplementary material", t):
+            marks.append(dict(page=int(it.get("page", 0)), key="appendix"))
+    if sum(1 for h in marks if h.get("num")) >= 3:
+        return marks
+    fonts, els = {}, []
+    for page in root.iter("page"):
+        for fs in page.iter("fontspec"):
+            fonts[fs.get("id")] = (float(fs.get("size")), fs.get("family", ""))
+        for t in page.iter("text"):
+            txt = "".join(t.itertext())
+            if not txt.strip():
+                continue
+            size, fam = fonts.get(t.get("font"), (0.0, ""))
+            styled = t.find(".//b") is not None or t.find(".//i") is not None or \
+                bool(STYLED_FONT.search(fam.split("+")[-1]))
+            els.append(dict(page=int(page.get("number")), top=float(t.get("top")), left=float(t.get("left")),
+                            right=float(t.get("left")) + float(t.get("width")), size=size, styled=styled, text=txt))
+    if not els:
+        return []
+    by_size = {}
+    for e in els:
+        by_size[e["size"]] = by_size.get(e["size"], 0) + len(e["text"])
+    body = max(by_size, key=by_size.get)
+    # lines: same page, tops within 4 px (small caps sit a few px lower than their capitals)
+    els.sort(key=lambda e: (e["page"], e["top"], e["left"]))
+    lines, cur = [], []
+    for e in els:
+        if cur and (e["page"] != cur[0]["page"] or e["top"] - cur[0]["top"] > 4):
+            lines.append(cur); cur = []
+        cur.append(e)
+    lines.append(cur)
+    out = []
     for ln in lines:
-        s = ln.strip()
-        if STOP_RE.match(s):
+        ln.sort(key=lambda e: e["left"])
+        seg = [ln[0]]
+        for e in ln[1:]:                                   # first column only: stop at a wide gap
+            if e["left"] - seg[-1]["right"] > 30:
+                break
+            seg.append(e)
+        text = seg[0]["text"]
+        for a, b in zip(seg, seg[1:]):
+            text += ("" if b["left"] - a["right"] <= 2.5 else " ") + b["text"]
+        text = re.sub(r"\s+", " ", text).strip()
+        if re.fullmatch(r"(?i)appendix|appendices|supplementary material", text) and seg[0]["size"] >= body:
+            out.append(dict(page=seg[0]["page"], key="appendix"))
+            continue
+        m = NUM_HEAD.match(text)
+        if not m or seg[0]["size"] < body * 0.95:
+            continue
+        title = m.group(2).strip()
+        letters = [c for c in title if c.isalpha()]
+        if (title.endswith(".") or len(title.split()) > 12 or len(letters) < 3 or re.search(r"\d{3,}", title)
+                or re.search(r"(\.\s?){4,}", title) or not (title[0].isupper() or ord(title[0]) > 127)):
+            continue
+        caps = all(c.isupper() for c in letters)
+        # the whole title must be in the heading style: a bold lead-in followed by plain
+        # text ("4. Slide Matching: Do the slides ...") is a list item, not a heading
+        worded = [e for e in seg if re.search(r"[^\W\d_]", e["text"])]
+        if not (caps or all(e["styled"] for e in worded) or all(e["size"] > body * 1.05 for e in worded)):
+            continue
+        out.append(dict(page=seg[0]["page"], num=m.group(1), title=title, key=squash(m.group(1) + title)))
+    return out
+
+
+def nice_title(title, text):
+    """'PAPERTALKER AGENT' → 'PaperTalker Agent': an all-caps heading takes each word's
+    usual spelling from the paper body (so names and acronyms keep their case)."""
+    if not title.isupper():
+        return title
+    words = []
+    for i, token in enumerate(title.split()):
+        lead, w, tail = re.match(r"^(\W*)(.*?)(\W*)$", token).groups()   # keep "(", ":" etc. around the word
+        forms = re.findall(rf"(?<![\w-]){re.escape(w)}(?![\w-])", text, re.I) if w else []
+        mixed = [f for f in forms if not f.isupper() and not f.islower()]
+        if w.lower() in SMALL and i:
+            w = w.lower()
+        elif forms and sum(f.isupper() for f in forms) > len(forms) / 2 and len(w) <= 5:
+            pass                                           # an acronym: VLM, IP, AI
+        elif mixed:
+            w = max(set(mixed), key=mixed.count)           # PaperTalker, Paper2Video, SWE-Llama
+        else:
+            w = w.capitalize()
+        words.append(lead + w + tail)
+    return " ".join(words)
+
+
+def sections(pages, heads=None):
+    """Split the paper into numbered sections; drop references. Appendix kept, flagged.
+
+    With `heads` (from headings()), a line starts a section only if it is one of those
+    font-checked headings; without them, a text pattern is used (older behaviour).
+    """
+    out, cur = [], dict(num="0", title="Front matter", lines=[], parent="Front matter")
+    in_appendix, parent, last_top = False, "Front matter", 0
+    full = "\n".join(pages)
+    pending = {}
+    for h in heads or []:
+        pending.setdefault(h["page"], []).append(h)
+
+    def start(num, title, rest=""):
+        nonlocal cur, parent, last_top
+        top = int(num.split(".")[0]) if num[0].isdigit() else None
+        if top is not None:
+            last_top = top
+        if cur["lines"] or cur["num"] != "0":
             out.append(cur)
-            cur = dict(num="R", title="References", lines=[], skip=True)
-            continue
-        if re.match(r"^\s*A\s?PPENDIX|^\s*Appendix\s*$", s):
-            in_appendix = True
-        m = HEAD_RE.match(ln)
-        if m and len(s) < 90 and not s.endswith(".") and not re.search(r"\d{3,}", m.group(2)) \
-                and sum(c.isalpha() for c in m.group(2)) >= 3 and len(m.group(2).split()) <= 12:
-            if cur["lines"] or cur["num"] != "0":
+        title = re.sub(r"\s+", " ", title).strip()
+        if "." not in num:
+            parent = title                              # remember the top-level section
+        cur = dict(num=num, title=title, lines=[rest] if rest.strip() else [], parent=parent,
+                   appendix=in_appendix or (num[0].isalpha() and heads is None))
+
+    for pno, page in enumerate(pages, 1):
+        todo = pending.get(pno, [])
+        for ln in page.splitlines():
+            s = ln.strip()
+            if STOP_RE.match(s):
                 out.append(cur)
-            cur = dict(num=m.group(1), title=re.sub(r"\s+", " ", m.group(2)).strip(), lines=[],
-                       appendix=in_appendix or m.group(1)[0].isalpha())
-            continue
-        cur["lines"].append(ln)
+                cur = dict(num="R", title="References", lines=[], skip=True)
+                in_appendix = in_appendix or heads is not None   # anything headed after references is appendix
+                continue
+            if re.match(r"^\s*A\s?PPENDIX|^\s*Appendix\s*$", s):
+                in_appendix = True
+            if heads is not None:
+                key = squash(s)
+                # a long heading may wrap: its first line is then a prefix of the heading
+                h = next((h for h in todo if h.get("num") and len(h["key"]) >= 4 and (
+                    key.startswith(h["key"]) or (len(key) >= 12 and h["key"].startswith(key)))), None)
+                if h:
+                    todo.remove(h)
+                    top = int(h["num"].split(".")[0]) if h["num"][0].isdigit() else None
+                    if not (top is not None and not in_appendix and top < last_top):
+                        # text after the heading on the same line belongs to another column
+                        n, cut = 0, len(s)
+                        for i, c in enumerate(s):
+                            n += len(squash(c))
+                            if n >= len(h["key"]):
+                                cut = i + 1
+                                break
+                        start(h["num"], nice_title(h["title"], full), s[cut:])
+                        continue
+                cur["lines"].append(ln)
+                continue
+            m = HEAD_RE.match(ln)
+            # section numbers only move forward: a "1" after section 2.1 is text in a figure
+            top = int(m.group(1).split(".")[0]) if m and m.group(1)[0].isdigit() else None
+            backwards = top is not None and not in_appendix and top < last_top
+            if m and not backwards and len(s) < 90 and not s.endswith(".") and not re.search(r"\d{3,}", m.group(2)) \
+                    and sum(c.isalpha() for c in m.group(2)) >= 3 and len(m.group(2).split()) <= 12:
+                start(m.group(1), m.group(2))
+                continue
+            cur["lines"].append(ln)
     out.append(cur)
     res = []
     for sct in out:
@@ -68,7 +231,23 @@ def sections(pages):
         text = re.sub(r"[ \t]{2,}", " ", "\n".join(sct["lines"])).strip()
         if len(text.split()) < 25:
             continue
-        res.append(dict(num=sct["num"], title=sct["title"], appendix=sct.get("appendix", False), text=text))
+        res.append(dict(num=sct["num"], title=sct["title"], parent=sct.get("parent", sct["title"]),
+                        appendix=sct.get("appendix", False), text=text))
+    # a repeated section number means one "heading" was really a numbered list item
+    # (e.g. inside a figure): keep the longer section, fold the shorter into its neighbour
+    i = 0
+    while i + 1 < len(res):
+        a, b = res[i], res[i + 1]
+        if a["num"] == b["num"]:
+            if len(a["text"]) < len(b["text"]):
+                if i > 0:
+                    res[i - 1]["text"] += f"\n{a['num']}. {a['title']}\n{a['text']}"
+                res.pop(i)
+            else:
+                a["text"] += f"\n{b['num']}. {b['title']}\n{b['text']}"
+                res.pop(i + 1)
+            continue
+        i += 1
     return res
 
 
@@ -80,7 +259,7 @@ def chunks(secs, max_words=1500):
         for i in range(0, len(words), max_words):
             part = " ".join(words[i:i + max_words])
             out.append(dict(title=f'{s["num"]} {s["title"]}' + (f" (part {i // max_words + 1})" if i else ""),
-                            appendix=s["appendix"], text=part))
+                            parent=s.get("parent", s["title"]), appendix=s["appendix"], text=part))
     return out
 
 
@@ -92,14 +271,28 @@ def words(pdf, page):
 
 
 def lines_of(ws):
+    """Text lines: words on the same visual line (tops within 2.5 pt), in x order, split
+    where a gap of 12 pt or more separates columns (or text from a float beside it)."""
     rows = []
-    for w in sorted(ws, key=lambda w: (round(w[1] / 2.5), w[0])):
-        if rows and abs(rows[-1][-1][1] - w[1]) < 2.5 and w[0] - rows[-1][-1][2] < 12:
+    for w in sorted(ws, key=lambda w: (w[1], w[0])):
+        if rows and abs(rows[-1][0][1] - w[1]) < 2.5:
             rows[-1].append(w)
         else:
             rows.append([w])
+    segs = []
+    for r in rows:
+        r.sort(key=lambda w: w[0])
+        seg = [r[0]]
+        for w in r[1:]:
+            if w[0] - seg[-1][2] < 12:
+                seg.append(w)
+            else:
+                segs.append(seg); seg = [w]
+        segs.append(seg)
+    # gaps wider than word spacing: where text wrapped beside a float meets the float
     return [dict(x0=min(w[0] for w in r), y0=min(w[1] for w in r), x1=max(w[2] for w in r),
-                 y1=max(w[3] for w in r), text=" ".join(w[4] for w in r), n=len(r)) for r in rows]
+                 y1=max(w[3] for w in r), text=" ".join(w[4] for w in r), n=len(r),
+                 gaps=[(a[2], b[0]) for a, b in zip(r, r[1:]) if b[0] - a[2] > 7]) for r in segs]
 
 
 def page_image(pdf, page, cache):
@@ -143,8 +336,10 @@ def _captions(ws):
     for i, w in enumerate(ws[:-1]):
         if not CAPTION_RE.match(w[4]):
             continue
-        # a caption starts its line: "...see Appendix Table 18." is a mention, not a caption
-        if any(abs(u[1] - w[1]) < 2.5 and w[0] - 40 < u[2] <= w[0] + 0.5 for u in ws if u is not w):
+        # a caption starts its line (or its column, for a float with text wrapped beside
+        # it): "...see Appendix Table 18." is a mention, not a caption. Words in a line are
+        # ~2-4 pt apart; a wrapped float sits a column gap (8 pt or more) away.
+        if any(abs(u[1] - w[1]) < 2.5 and w[0] - 6 < u[2] <= w[0] + 0.5 for u in ws if u is not w):
             continue
         nxt = ws[i + 1]
         m = re.match(r"^(\d+|[A-Z]\d*)([:.])?$", nxt[4])
@@ -197,13 +392,20 @@ def find_figures(pdf, cache, progress=lambda i, n: None):
             else:
                 cx0, cx1 = cap["x0"] - 8, cap_x1 + 8
             cx0, cx1 = max(cx0, 0.02 * W), min(cx1, 0.98 * W)
-            in_col = [l for l in lns if l["x1"] > cx0 + 2 and l["x0"] < cx1 - 2]
+            # lines in this column: mostly inside it (text wrapped beside a side figure only
+            # touches the column's edge, and is not part of it)
+            in_col = [l for l in lns if min(l["x1"], cx1) - max(l["x0"], cx0) >
+                      0.5 * min(l["x1"] - l["x0"], cx1 - cx0)]
             # caption block: continuation lines directly below (same column)
             cap_bot = cap["y1"]
             for l in sorted(in_col, key=lambda l: l["y0"]):
                 if 0 < l["y0"] - cap_bot < 4 and l["x0"] >= cap["x0"] - 6:
                     cap_bot = l["y1"]
-            prose = [l for l in in_col if _is_prose(l, typ, margins)]
+            # a "line" that runs from wrapped text into the float (a gap at the column edge)
+            # belongs to the float, so it doesn't bound it
+            split_by_edge = lambda l: any((g0 < cx0 + 12 and g1 > cx0 - 4) or (g0 < cx1 + 4 and g1 > cx1 - 12)
+                                          for g0, g1 in l.get("gaps", []))
+            prose = [l for l in in_col if _is_prose(l, typ, margins) and not split_by_edge(l)]
             def in_column(c):
                 ov = min(c["x1"], cx1) - max(c["x0"], cx0)
                 return ov > 0.5 * (c["x1"] - c["x0"])
@@ -238,6 +440,8 @@ def find_figures(pdf, cache, progress=lambda i, n: None):
                     break
             if not box:
                 continue
+            if cx1 - cx0 < 0.7 * W:                            # a side float: it may be wider than its caption
+                box = widen(pdf, page, box, cache, 0.02 * W, 0.98 * W)
             fid = re.sub(r"\W+", "_", cap["label"].lower())
             path = pathlib.Path(cache).parent / "figs" / f"{fid}.png"
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -294,6 +498,31 @@ def grow(pdf, page, box, cache, anchor, split="", lead_pt=30, gap_pt=10, pad=4):
             last = k
     ya, yb = sorted((idx[first], idx[last]))
     return trim(pdf, page, (box[0], (y0 + ya) / SCALE - 1, box[2], (y0 + yb + 1) / SCALE + 1), cache, pad)
+
+
+def widen(pdf, page, box, cache, lo, hi, gap_pt=3.5, pad=4):
+    """A side table is often wider than its caption: extend the box left/right while ink
+    continues, stopping at the first white gap (the space before wrapped text)."""
+    img = np.asarray(page_image(pdf, page, cache).convert("L"))
+    x0, y0, x1, y1 = (int(round(v * SCALE)) for v in box)
+    ink = (img[max(y0, 0):y1, :] < 245).any(axis=0)
+    gap = int(gap_pt * SCALE)
+
+    def edge(x, step, limit):
+        run, last = 0, x
+        while 0 <= x + step < len(ink) and (x + step) * step <= limit * step:
+            x += step
+            if ink[x]:
+                run, last = 0, x
+            else:
+                run += 1
+                if run >= gap:
+                    break
+        return last
+
+    nx0 = edge(x0 + int(pad * SCALE), -1, int(lo * SCALE))
+    nx1 = edge(x1 - int(pad * SCALE), 1, int(hi * SCALE))
+    return (min(box[0], nx0 / SCALE - pad), box[1], max(box[2], nx1 / SCALE + pad), box[3])
 
 
 def trim(pdf, page, box, cache, pad=4):

@@ -1,7 +1,7 @@
 """Minimal client for a local Ollama server (no internet, no API keys).
 
 Streams tokens so the UI can show progress, asks for JSON when a task needs
-structure, and loads prompt templates ("skills") from p2v/skills/*.md.
+structure, and loads prompt templates ("skills") from paperlamp/skills/*.md.
 """
 import json, pathlib, re, time, urllib.request
 
@@ -17,6 +17,16 @@ def available():
             return [m["name"] for m in json.load(r)["models"]]
     except Exception:
         return []
+
+
+def unload(model=DEFAULT_MODEL):
+    """Free the model's memory now (before voice cloning, which needs it on a 16 GB laptop)."""
+    try:
+        req = urllib.request.Request(OLLAMA + "/api/generate", json.dumps({"model": model, "keep_alive": 0}).encode(),
+                                     {"Content-Type": "application/json"})
+        urllib.request.urlopen(req, timeout=60).read()
+    except Exception:
+        pass
 
 
 def skill(name, **values):

@@ -1,6 +1,6 @@
 ---
 name: paper-script-review
-description: Review and improve a script that the local model wrote for a paper2video job — fact-check every sentence against the paper, fix or remove unsupported claims, add missing key findings and limitations — then re-render. Use when the user asks Claude to check, improve or rewrite a generated video script, or to compare its quality.
+description: Review and improve a script that the local model wrote for a PaperLamp job — fact-check every sentence against the paper, fix or remove unsupported claims, add missing key findings and limitations — then re-render. Use when the user asks Claude to check, improve or rewrite a generated video script, or to compare its quality.
 ---
 
 # Review a generated script with Claude
@@ -24,7 +24,7 @@ model extracted), `script.json` (chapters → sentences, each with `status` from
    camera uses that to frame and outline them.
 5. Save `script.json` (keep the `chapters[].title/key/sentences[].text` structure; you may set
    `"source": "Claude review"`). Then re-run from verify:
-   `python3 -m p2v.cli --resume <id> --from verify`
+   `python3 -m paperlamp.cli --resume <id> --from verify`
 6. Report what changed and the verifier's counts (`script.json` → `verification`).
 
 Never invent numbers, even rounded ones; derived arithmetic must be labelled as such in the text.

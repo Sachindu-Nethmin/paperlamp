@@ -1,6 +1,6 @@
 ---
 name: choose-local-model
-description: Benchmark the Ollama models installed on this machine and pick the smallest one that extracts paper facts without inventing numbers. Use when setting paper2video up on a new computer, when a model is slow or out of memory, or when the user asks which local model to use.
+description: Benchmark the Ollama models installed on this machine and pick the smallest one that extracts paper facts without inventing numbers. Use when setting PaperLamp up on a new computer, when a model is slow or out of memory, or when the user asks which local model to use.
 ---
 
 # Choose the local model

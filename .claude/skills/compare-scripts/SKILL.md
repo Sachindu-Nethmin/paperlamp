@@ -7,7 +7,7 @@ description: Compare the quality of two video scripts for the same paper (e.g. l
 
 1. Get both scripts in the tool's format (`script.json` from a job, or an export such as
    `examples/claude_swebench.script.json` made with `bench/export_claude_scripts.py`).
-2. Run: `python3 -m p2v.compare paper.pdf A.script.json B.script.json --names A B --out cmp.json`
+2. Run: `python3 -m paperlamp.compare paper.pdf A.script.json B.script.json --names A B --out cmp.json`
 3. Metrics (all computed against the paper, no model-as-judge): numbers found in the paper,
    distinct verified numbers, abstract-number coverage, figure/table references, limitation
    sentences, words per sentence, Flesch reading ease, near-duplicate sentences.

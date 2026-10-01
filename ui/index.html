@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>paper2video</title>
+<title>PaperLamp</title>
 <style>
 :root{--bg:#0E1726;--panel:#16233A;--line:#26365A;--text:#F5F7FA;--muted:#8FA0BC;--dim:#56678A;--accent:#F0A868;
       --good:#7FC8A9;--bad:#E0796B;--r:14px}
@@ -90,8 +90,11 @@ video{width:100%;border-radius:12px;background:#000;margin-top:14px}
       <label>Local model (Ollama)</label>
       <select id="model"></select>
       <div class="hint" id="modelHint"></div>
-      <label>Target length: <b id="minv">8</b> min</label>
-      <input type="range" id="minutes" min="3" max="30" value="8">
+      <label>Length</label>
+      <div class="seg" id="depthSeg"><button data-v="summary" class="on">Target minutes</button><button data-v="full">Whole paper</button></div>
+      <div id="minBox"><label>Target length: <b id="minv">8</b> min</label>
+      <input type="range" id="minutes" min="3" max="30" value="8"></div>
+      <div class="hint" id="fullHint" hidden>Every section in order, each figure and table explained where the paper discusses it, appendix in brief. Length follows the paper (often 15 to 30 min).</div>
       <label>Voice</label>
       <div class="seg" id="voiceSeg"><button data-v="say" class="on">macOS voice</button><button data-v="chatterbox">My cloned voice</button></div>
       <div id="sayBox"><label>System voice</label><select id="sayVoice"><option value="">Default</option></select></div>
@@ -100,6 +103,10 @@ video{width:100%;border-radius:12px;background:#000;margin-top:14px}
         <label>Reference recording (7–20 s WAV of your voice)</label><input type="text" id="cbRef" placeholder="/path/to/reference.wav">
         <div class="hint">Cloning is slow on a laptop (~1 min per sentence). Only clone a voice you have permission to use.</div>
       </div>
+      <label>Self-check at the end</label>
+      <select id="quizN"><option value="3">3 questions (recommended)</option><option value="2">2 questions</option>
+        <option value="5">5 questions</option><option value="0">None</option></select>
+      <div class="hint">Questions are written from the paper and every number in them is checked. A longer set is saved as quiz.md for testing students.</div>
       <label>Script source</label>
       <div class="seg" id="srcSeg"><button data-v="ollama" class="on">Write with local model</button><button data-v="import">Import script JSON</button></div>
       <div id="importBox" hidden><label>Script JSON</label><input type="file" id="scriptFile" accept="application/json"></div>
@@ -115,12 +122,13 @@ video{width:100%;border-radius:12px;background:#000;margin-top:14px}
 </main>
 <script>
 const $ = s => document.querySelector(s);
-let pdfFile = null, voice = "say", source = "ollama", current = null, timer = null, setup = null;
+let pdfFile = null, voice = "say", source = "ollama", depth = "summary", current = null, timer = null, setup = null;
 
 function seg(id, cb){ document.querySelectorAll(`#${id} button`).forEach(b => b.onclick = () => {
   document.querySelectorAll(`#${id} button`).forEach(x => x.classList.toggle("on", x === b)); cb(b.dataset.v); }); }
 seg("voiceSeg", v => { voice = v; $("#sayBox").hidden = v !== "say"; $("#cbBox").hidden = v !== "chatterbox"; });
 seg("srcSeg", v => { source = v; $("#importBox").hidden = v !== "import"; });
+seg("depthSeg", v => { depth = v; $("#minBox").hidden = v === "full"; $("#fullHint").hidden = v !== "full"; });
 $("#minutes").oninput = e => $("#minv").textContent = e.target.value;
 $("#drop").onclick = () => $("#file").click();
 $("#file").onchange = e => pick(e.target.files[0]);
@@ -145,7 +153,8 @@ async function loadSetup(){
 $("#go").onclick = async () => {
   $("#go").disabled = true;
   const settings = {model: $("#model").value, minutes: +$("#minutes").value, voice, say_voice: $("#sayVoice").value,
-                    chatterbox_python: $("#cbPython").value, voice_reference: $("#cbRef").value, script_source: source};
+                    chatterbox_python: $("#cbPython").value, voice_reference: $("#cbRef").value, script_source: source,
+                    quiz_in_video: +$("#quizN").value, depth};
   const r = await fetch(`/api/jobs?name=${encodeURIComponent(pdfFile.name)}&settings=${encodeURIComponent(JSON.stringify(settings))}`,
                         {method: "POST", body: pdfFile});
   const j = await r.json();
@@ -185,7 +194,7 @@ async function poll(){
     <div class="sub">${esc((meta.authors||[]).slice(0,6).join(", "))} ${meta.venue?"· "+esc(meta.venue):""}</div>
     <div class="overall"><div style="width:${(overall*100).toFixed(1)}%"></div></div>
     <div class="stats"><span><b>${Math.round(overall*100)}%</b> overall</span><span>model <b>${esc(j.settings.model)}</b></span>
-      <span>voice <b>${esc(j.settings.voice)}</b></span><span>target <b>${j.settings.minutes} min</b></span></div>
+      <span>voice <b>${esc(j.settings.voice)}</b></span><span>${j.settings.depth==="full" ? "<b>whole paper</b>" : `target <b>${j.settings.minutes} min</b>`}</span></div>
     <div class="stages">` + st.map(([k,s]) => {
       const el = s.started ? ((s.ended || Date.now()/1000) - s.started) : null;
       return `<div class="stage ${s.status}"><div class="dot">${s.status==="done"?"✓":s.status==="error"?"!":""}</div>
@@ -198,6 +207,7 @@ async function poll(){
     html += `<video controls src="${base}${j.outputs.video}"></video>
       <div class="links"><a href="${base}${j.outputs.video}" download>Download video</a><a href="${base}${j.outputs.captions}" download>Captions (.srt)</a>
       <a href="${base}${j.outputs.description}" target="_blank">YouTube description</a><a href="${base}${j.outputs.script}" target="_blank">Script</a>
+      ${j.outputs.quiz ? `<a href="${base}${j.outputs.quiz}" target="_blank">Quiz for students</a>` : ""}
       <a href="${base}script.json" download>script.json</a></div>`;
   }
   html += `<div class="grid2">`;

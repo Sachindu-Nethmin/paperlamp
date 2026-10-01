@@ -13,9 +13,47 @@ def paper_meta(doc, model, progress):
     meta = llm.chat(llm.skill("paper_meta", text=doc["first_page"][:3500]), model=model, max_tokens=600)
     for k in ("title", "authors", "affiliations", "venue", "year", "one_line"):
         meta.setdefault(k, "" if k not in ("authors", "affiliations") else [])
-    if not meta["title"] and doc.get("pdf_title"):
-        meta["title"] = doc["pdf_title"]
+    meta["authors"] = [n.title() if isinstance(n, str) and n.isupper() else n for n in meta["authors"]]
+    meta = check_meta(meta, doc)
     progress(1, 1, meta["title"][:80])
+    return meta
+
+
+def _words(s):
+    return re.findall(r"[^\W_]+", str(s).lower())
+
+
+def check_meta(meta, doc):
+    """Wrong titles and author lists are the most visible slips in generated paper videos,
+    so the model's reading of page 1 is checked against page 1 itself: the title must be
+    (almost) all there, and each author's surname must appear. Anything unsupported is
+    replaced by the PDF's own title or dropped, and noted in meta["checks"]."""
+    page = set(_words(doc.get("first_page", "")))
+    checks = []
+    tw = _words(meta.get("title", ""))
+    if not tw or sum(w in page for w in tw) / len(tw) < 0.85:
+        pdf_title = doc.get("pdf_title") or ""
+        pw = _words(pdf_title)
+        if pw and sum(w in page for w in pw) / len(pw) >= 0.85:
+            checks.append(f"title replaced by the PDF's own title (model gave: {meta.get('title', '')!r})")
+            meta["title"] = pdf_title
+        elif tw:
+            checks.append("title not found on page 1")
+    keep, flat = [], "".join(_words(doc.get("first_page", "")))
+    for name in meta.get("authors") or []:
+        w = _words(name)
+        # "ShouB", "Lin*1": marks are often glued to a surname, so a page word that starts
+        # with the surname counts, as does the full name run together
+        if w and (w[-1] in page or "".join(w) in flat or
+                  (len(w[-1]) >= 3 and any(t.startswith(w[-1]) and len(t) <= len(w[-1]) + 2 for t in page))):
+            keep.append(name)
+        else:
+            checks.append(f"author dropped, not on page 1: {name!r}")
+    meta["authors"] = keep
+    if not meta.get("venue") and re.search(r"\barxiv:\s?\d{4}\.\d{4,5}|\bpreprint\b", doc.get("first_page", ""), re.I):
+        meta["venue"] = "arXiv preprint"                   # say so, rather than leave the venue blank
+        checks.append("venue set to arXiv preprint (page 1 says so)")
+    meta["checks"] = checks
     return meta
 
 
@@ -33,7 +71,8 @@ def section_notes(chunks, model, progress):
             v = n.get(k) or []
             n[k] = v if isinstance(v, list) else [v]
         n["key_numbers"] = [x for x in n["key_numbers"] if isinstance(x, dict) and x.get("value")]
-        notes.append(dict(n, title=ch["title"], appendix=ch.get("appendix", False)))
+        notes.append(dict(n, title=ch["title"], parent=ch.get("parent", ""), appendix=ch.get("appendix", False),
+                          words=len(ch["text"].split())))
     progress(len(chunks), len(chunks), f"{len(notes)} sections noted")
     return notes
 

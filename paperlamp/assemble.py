@@ -25,7 +25,7 @@ def timeline(sentences, durs):
             t += GAP_CH if s["chapter"] != prev else GAP_IN
         d = durs[s["id"]]
         rows.append(dict(s, start=round(t, 3), end=round(t + d, 3)))
-        t += d
+        t += d + (s.get("pause") or 0)                   # e.g. thinking time after a quiz question
         prev = s["chapter"]
     total = round(t + TAIL, 3)
     for i, r in enumerate(rows):                         # segment spans the pause after it
@@ -108,7 +108,7 @@ def captions(rows, out_dir):
         for k, c in enumerate(cards):
             d = span * len(c) / sum(len(x) for x in cards)
             end = t + d if k < len(cards) - 1 else min(r["end"] + 0.4, nxt - 0.05)
-            cues.append((t, end, wrap(c)))
+            cues.append((t, end, wrap(c), not r.get("card")))   # quiz cards already show their text
             t += d
     ass_t = lambda s: f"{int(s // 3600)}:{int(s % 3600 // 60):02d}:{s % 60:05.2f}"
 
@@ -122,8 +122,8 @@ def captions(rows, out_dir):
            "Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n"
            "Style: Cap,Helvetica Neue,46,&H00FAF7F5,&H000000FF,&H30261709,&H30261709,0,0,0,0,100,100,0,0,3,16,0,2,"
            "200,200,56,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
-    ass += "".join(f"Dialogue: 0,{ass_t(a)},{ass_t(b)},Cap,,0,0,0,,{nl.join(l)}\n" for a, b, l in cues)
-    srt = "".join(f"{n}\n{srt_t(a)} --> {srt_t(b)}\n" + "\n".join(l) + "\n\n" for n, (a, b, l) in enumerate(cues, 1))
+    ass += "".join(f"Dialogue: 0,{ass_t(a)},{ass_t(b)},Cap,,0,0,0,,{nl.join(l)}\n" for a, b, l, burn in cues if burn)
+    srt = "".join(f"{n}\n{srt_t(a)} --> {srt_t(b)}\n" + "\n".join(l) + "\n\n" for n, (a, b, l, _) in enumerate(cues, 1))
     (out_dir / "captions.ass").write_text(ass, encoding="utf-8")
     (out_dir / "captions.srt").write_text(srt, encoding="utf-8")
     return len(cues)
@@ -148,11 +148,16 @@ def build(job, sentences, durs, meta, pages, progress, voice_note=""):
                                     (" · ".join(x for x in (meta.get("venue", ""), meta.get("year", "")) if x), 30,
                                      (143, 160, 188), False)],
                              sub="Pages shown are from the paper. " + voice_note)
+        elif r.get("card"):
+            card_spec = dict(quiz=r["card"])
         hud = dict(chapter=r["chapter"], pages=pages)
         jobs.append((work / f"seg_{i:04d}.mp4", str(job / "paper.pdf"), str(job / "cam"), r["frames"],
                      r.get("align"), prev, hud, card_spec))
         if not card_spec:
             prev = r.get("align")
+    # build each page's camera canvas once, before the parallel workers read them
+    for pg in sorted({r["align"]["page"] for r in rows if r.get("align")}):
+        render.page_canvas(job / "paper.pdf", pg, job / "cam")
     render.render_all(jobs, lambda d, n, m: progress(1 + d / n * 2, 4, m))
     (work / "concat.txt").write_text("".join(f"file '{j[0].name}'\n" for j in jobs))
     run(["ffmpeg", "-y", "-hide_banner", "-f", "concat", "-safe", "0", "-i", "concat.txt", "-c", "copy",
