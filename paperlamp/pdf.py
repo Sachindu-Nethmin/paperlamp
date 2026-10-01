@@ -292,7 +292,9 @@ def lines_of(ws):
     # gaps wider than word spacing: where text wrapped beside a float meets the float
     return [dict(x0=min(w[0] for w in r), y0=min(w[1] for w in r), x1=max(w[2] for w in r),
                  y1=max(w[3] for w in r), text=" ".join(w[4] for w in r), n=len(r),
-                 gaps=[(a[2], b[0]) for a, b in zip(r, r[1:]) if b[0] - a[2] > 7]) for r in segs]
+                 gaps=[(a[2], b[0]) for a, b in zip(r, r[1:]) if b[0] - a[2] > 7],
+                 words=[[round(w[0], 1), round(w[1], 1), round(w[2], 1), round(w[3], 1), w[4]] for w in r])
+            for r in segs]
 
 
 def page_image(pdf, page, cache):
@@ -449,6 +451,7 @@ def find_figures(pdf, cache, progress=lambda i, n: None):
             seen.add(cap["label"])
             found.append(dict(id=fid, label=cap["label"], kind=cap["kind"], page=page,
                               box=[round(v, 1) for v in box], caption=re.sub(r"\s+", " ", cap["text"])[:400],
+                              caption_box=[round(cap[k], 1) for k in ("x0", "y0", "x1", "y1")],
                               file=f"figs/{fid}.png", size=Image.open(path).size))
     progress(meta["pages"], meta["pages"])
     return found

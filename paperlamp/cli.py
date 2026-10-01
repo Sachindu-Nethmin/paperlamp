@@ -2,7 +2,7 @@
 
     python3 -m paperlamp.cli paper.pdf [--minutes 8 | --whole-paper] [--model ornith:9b]
                                  [--voice say|chatterbox] [--say-voice Samantha]
-                                 [--chatterbox-python PY --reference WAV] [--quiz 3]
+                                 [--chatterbox-python PY --reference WAV] [--quiz N]
                                  [--import script.json] [--resume JOB_ID --from STAGE]
 """
 import argparse, json, pathlib, sys, time
@@ -16,7 +16,7 @@ def main():
     ap.add_argument("--minutes", type=float, default=8)
     ap.add_argument("--whole-paper", action="store_true",
                     help="explain every section in order; length follows the paper (ignores --minutes)")
-    ap.add_argument("--quiz", type=int, default=3, help="self-check questions at the end of the video (0 = none)")
+    ap.add_argument("--quiz", type=int, default=0, help="self-check questions at the end of the video (default none)")
     ap.add_argument("--model", default=pipeline.DEFAULTS["model"])
     ap.add_argument("--voice", choices=["say", "chatterbox"], default="say")
     ap.add_argument("--say-voice", default="")

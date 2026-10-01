@@ -18,7 +18,7 @@ STAGES = [("parse", "Read the PDF"), ("figures", "Find figures and tables"), ("m
           ("voice", "Record narration"), ("render", "Render and assemble the video")]
 LLM_STAGES = {"meta", "notes", "script", "verify", "quiz"}      # stages that may call the local model
 DEFAULTS = dict(model=llm.DEFAULT_MODEL, minutes=8, voice="say", say_voice="", say_rate=175,
-                chatterbox_python="", voice_reference="", script_source="ollama", quiz_in_video=3,
+                chatterbox_python="", voice_reference="", script_source="ollama", quiz_in_video=0,
                 depth="summary")
 
 
@@ -189,6 +189,11 @@ class Job:
     def stage_quiz(self, cb):
         s = self.state["settings"]
         sc = self.read("script.json")
+        if not int(s.get("quiz_in_video") or 0):          # off by default: no questions, no model time
+            sc["chapters"] = [ch for ch in sc["chapters"] if ch["key"] != "quiz"]
+            self.write("script.json", sc)
+            cb(1, 1, "off")
+            return
         notes = self.read("notes.json") if (self.dir / "notes.json").exists() else []
         said = [x["text"] for ch in sc["chapters"] if ch["key"] not in ("quiz", "outro") for x in ch["sentences"]]
         meta = sc.get("meta") or {}

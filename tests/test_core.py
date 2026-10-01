@@ -241,6 +241,34 @@ class Quiz(unittest.TestCase):
         self.assertTrue(second["text"].startswith("The answer is A:"))
 
 
+class SentenceHighlight(unittest.TestCase):
+    @staticmethod
+    def line(page, y, text):
+        x, ws = 108.0, []
+        for w in text.split():
+            ws.append([x, y, x + 5 * len(w), y + 9, w]); x += 5 * len(w) + 3
+        return dict(page=page, box=[108, y, ws[-1][2], y + 9], text=text, words=ws)
+
+    def test_whole_source_sentence_is_highlighted(self):
+        from paperlamp import align
+        idx = [self.line(2, 100, "We built a benchmark. Results on Paper2Video confirm"),
+               self.line(2, 112, "the effectiveness of PaperTalker, which outperforms human-made"),
+               self.line(2, 124, "presentations by 10% in PresentQuiz accuracy. Next sentence here.")]
+        boxes = align.sentence_span(idx, 2, set(align.tokens("beat their talks by 10% on PresentQuiz")))
+        self.assertEqual(len(boxes), 3)
+        first_word = next(w for w in idx[0]["words"] if w[4] == "Results")
+        last_word = next(w for w in idx[2]["words"] if w[4] == "accuracy.")
+        self.assertEqual(boxes[0][0], first_word[0])          # starts at "Results", not at the line start
+        self.assertEqual(boxes[2][2], last_word[2])           # ends at "accuracy.", not at the line end
+
+    def test_abbreviations_do_not_end_a_sentence(self):
+        from paperlamp import align
+        self.assertFalse(align._ends_sentence("e.g."))
+        self.assertFalse(align._ends_sentence("al."))
+        self.assertTrue(align._ends_sentence("accuracy."))
+        self.assertTrue(align._ends_sentence("work.)"))
+
+
 class Timeline(unittest.TestCase):
     def test_pause_after_quiz_question(self):
         s = [dict(id="a", chapter="Q", text="q", pause=4.0), dict(id="b", chapter="Q", text="a")]

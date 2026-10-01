@@ -2,7 +2,8 @@
 
 For every sentence segment the camera glides (same page) or crossfades (new
 page) to the sentence's focus region, then drifts slowly while a highlighter
-sweeps across the matched lines. Figures named in the narration are outlined.
+sweeps across the matched sentence. Figures named in the narration stay bright while
+the rest of the page dims a little.
 Frames are drawn with Pillow and piped to ffmpeg; no browser needed.
 """
 import pathlib, subprocess
@@ -113,23 +114,21 @@ def hl_box(b):
 def marked(canvas, spec, lines=True):
     """The page as it looks once the sentence is highlighted: everything dimmed a
     little, the matched lines washed with highlighter yellow (multiply blend, so
-    the ink stays crisp), and any figure outlined. Built once per segment.
+    the ink stays crisp), and any figure kept at full brightness. Built once per segment.
     lines=False gives the same page before the highlighter has touched it."""
     hl, outline = spec.get("highlight") or [], spec.get("outline")
     if not hl and not outline:
         return None
     from PIL import ImageChops
     out = Image.blend(canvas, Image.new("RGB", canvas.size, BG), 0.25)
-    for b in (hl if lines else []):
+    if outline:                                             # the figure stays bright; no frame drawn round it
+        x0, y0, x1, y1 = [int(v) for v in to_px(outline)]
+        out.paste(canvas.crop((x0 - 20, y0 - 20, x1 + 20, y1 + 20)), (x0 - 20, y0 - 20))
+    for b in (hl if lines else []):                         # after the figure, so its caption stays marked
         box = hl_box(b)
         region = canvas.crop(box)
         region = ImageChops.multiply(region, Image.new("RGB", region.size, (255, 232, 120)))
         out.paste(region, box[:2])
-    if outline:
-        x0, y0, x1, y1 = [int(v) for v in to_px(outline)]
-        region = canvas.crop((x0 - 20, y0 - 20, x1 + 20, y1 + 20))
-        out.paste(region, (x0 - 20, y0 - 20))               # the figure itself stays bright
-        ImageDraw.Draw(out).rounded_rectangle([x0 - 24, y0 - 24, x1 + 24, y1 + 24], 22, outline=ACCENT, width=10)
     return out
 
 
