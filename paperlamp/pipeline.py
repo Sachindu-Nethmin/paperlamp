@@ -16,6 +16,7 @@ STAGES = [("parse", "Read the PDF"), ("figures", "Find figures and tables"), ("m
           ("verify", "Check every number against the paper"),
           ("quiz", "Write self-check questions"), ("align", "Match sentences to the page"),
           ("voice", "Record narration"), ("render", "Render and assemble the video")]
+LLM_STAGES = {"meta", "notes", "script", "verify", "quiz"}      # stages that may call the local model
 DEFAULTS = dict(model=llm.DEFAULT_MODEL, minutes=8, voice="say", say_voice="", say_rate=175,
                 chatterbox_python="", voice_reference="", script_source="ollama", quiz_in_video=3,
                 depth="summary")
@@ -95,6 +96,9 @@ class Job:
                 getattr(self, "stage_" + key)(self.progress(key))
                 st.update(status="done", progress=1.0, ended=time.time())
                 self.save(force=True)
+                later = [k for k, _ in STAGES[[k for k, _ in STAGES].index(key) + 1:]]
+                if key in LLM_STAGES and not LLM_STAGES.intersection(later):
+                    self.free_model_memory()            # the local model's work is done
         except Exception as e:
             for st in self.state["stages"].values():
                 if st["status"] == "running":
@@ -102,6 +106,14 @@ class Job:
             self.state["error"] = f"{type(e).__name__}: {e}"
             self.log(traceback.format_exc())
             self.save(force=True)
+            self.free_model_memory()
+
+    def free_model_memory(self):
+        """Unload every model Ollama holds, so voice cloning and rendering get that memory
+        (Ollama itself keeps running idle, using a few MB)."""
+        gb = llm.unload_all()
+        if gb:
+            self.log(f"freed {gb} GB: unloaded the local model; Ollama stays idle until the next job")
 
     def start(self):
         t = threading.Thread(target=self.run, daemon=True)
@@ -219,8 +231,7 @@ class Job:
         self.write("script.json", sc)
 
     def stage_voice(self, cb):
-        if self.state["settings"]["voice"] == "chatterbox":
-            llm.unload(self.state["settings"]["model"])     # the voice model needs that memory
+        self.free_model_memory()                    # e.g. a resumed job: the voice model needs that memory
         items = [(x["id"], x["spoken"]) for x in self.sentences()]
         durs = tts.narrate(items, self.dir / "audio", self.state["settings"], cb)
         self.write("durations.json", durs)

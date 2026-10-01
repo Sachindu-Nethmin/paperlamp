@@ -78,6 +78,29 @@ class Length(unittest.TestCase):
         self.assertEqual(script.fit_length(ch, minutes=30), 0)
 
 
+class Memory(unittest.TestCase):
+    def test_unload_all_frees_every_model(self):
+        from paperlamp import llm
+        held = [("ornith:9b", 5_600_000_000), ("other:7b", 4_000_000_000)]
+        calls = []
+        orig = llm.loaded, llm.unload
+        llm.loaded = lambda: list(held)
+        llm.unload = lambda name: (calls.append(name), held.remove(next(h for h in held if h[0] == name)))
+        try:
+            self.assertEqual(llm.unload_all(wait=1), 9.6)
+        finally:
+            llm.loaded, llm.unload = orig
+        self.assertEqual(calls, ["ornith:9b", "other:7b"])
+        self.assertEqual(held, [])
+
+    def test_freed_after_the_last_model_stage(self):
+        from paperlamp import pipeline
+        later_llm = lambda key: pipeline.LLM_STAGES.intersection(
+            [k for k, _ in pipeline.STAGES[[k for k, _ in pipeline.STAGES].index(key) + 1:]])
+        self.assertTrue(later_llm("script"))
+        self.assertFalse(later_llm("quiz"))
+
+
 class Repeats(unittest.TestCase):
     def test_copied_sentences_are_replaced(self):
         first = "The benchmark has 101 papers from machine learning, vision and language venues."

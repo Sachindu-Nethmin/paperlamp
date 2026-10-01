@@ -19,14 +19,36 @@ def available():
         return []
 
 
+def loaded():
+    """Models Ollama currently holds in memory: [(name, bytes)]."""
+    try:
+        with urllib.request.urlopen(OLLAMA + "/api/ps", timeout=5) as r:
+            return [(m["name"], m.get("size_vram") or m.get("size") or 0) for m in json.load(r).get("models", [])]
+    except Exception:
+        return []
+
+
 def unload(model=DEFAULT_MODEL):
-    """Free the model's memory now (before voice cloning, which needs it on a 16 GB laptop)."""
+    """Ask Ollama to drop one model from memory now."""
     try:
         req = urllib.request.Request(OLLAMA + "/api/generate", json.dumps({"model": model, "keep_alive": 0}).encode(),
                                      {"Content-Type": "application/json"})
         urllib.request.urlopen(req, timeout=60).read()
     except Exception:
         pass
+
+
+def unload_all(wait=30):
+    """Free every model Ollama holds (any job's, not just ours) and wait until it has
+    really let go, so the voice model and renderer get that memory on a 16 GB laptop.
+    Ollama's own server stays running; it needs only a few MB. Returns GB freed."""
+    held = loaded()
+    for name, _ in held:
+        unload(name)
+    end = time.time() + wait
+    while loaded() and time.time() < end:
+        time.sleep(0.5)
+    return round(sum(b for _, b in held) / 1e9, 1)
 
 
 def skill(name, **values):
