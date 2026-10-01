@@ -9,3 +9,4 @@ __pycache__/
 *.aiff
 *.mp4
 *.pdf
+build/

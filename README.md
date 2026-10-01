@@ -72,6 +72,28 @@ Optional voice cloning (slow on a laptop, ~1 min per sentence): create a separat
 `pip install chatterbox-tts "setuptools<81"`, record 7–20 s of your own voice as a WAV, and put
 both paths in `config.json` (see `config.example.json`).
 
+## Install the Mac app
+
+```bash
+packaging/build_app.sh            # builds PaperLamp.app and installs it in ~/Applications
+```
+
+PaperLamp.app opens in its own window and runs the engine in the background. Videos, settings and
+the engine log live in `~/Library/Application Support/PaperLamp` (the menu's **Open Data Folder**).
+
+Built for a 16 GB laptop:
+
+- **One video at a time.** Others wait in line, so two jobs never hold the language model, the voice
+  model and the renderer at once.
+- **Each heavy step cleans up after itself.** The language model (about 6 to 7 GB) is unloaded as
+  soon as the script is written; the voice-cloning server stops when the narration is recorded;
+  render workers are sized to the free memory (one per 0.8 GB, up to four); the per-sentence clips are
+  deleted once the final video exists.
+- **Idle means empty.** When the queue is empty, and when you quit, every model is unloaded. The
+  Memory panel shows free memory, what PaperLamp has loaded and the biggest memory users on the Mac,
+  with a **Free Memory Now** button.
+- Quitting while a video is being made asks first; the job resumes from where it stopped.
+
 ## Use
 
 ```bash
@@ -165,6 +187,8 @@ paperlamp/align.py      sentence → page/lines/region               paperlamp/r
 paperlamp/tts.py        say / Chatterbox backends                  paperlamp/voice_server.py  Chatterbox server
 paperlamp/assemble.py   timeline, audio, captions, final mux       paperlamp/pipeline.py stages, state, resume
 paperlamp/compare.py    script comparison metrics                  paperlamp/quiz.py     self-check questions
+paperlamp/passes.py     reading-pass videos (Keshav)               paperlamp/memory.py   memory status and cleanup
+packaging/              the Mac app (Swift window, icon, build)
 bench/                  model benchmark, exports                   tests/                unit tests
 ```
 

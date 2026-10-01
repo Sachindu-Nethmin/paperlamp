@@ -57,9 +57,16 @@ def check_meta(meta, doc):
     return meta
 
 
-def section_notes(chunks, model, progress):
-    notes = []
+def section_notes(chunks, model, progress, known=None):
+    """known: notes already taken for this paper (e.g. by another video of it), by
+    title; a chunk whose title and length match is reused instead of read again."""
+    notes, reused = [], 0
+    known = known or {}
     for i, ch in enumerate(chunks):
+        old = known.get(ch["title"])
+        if old and old.get("words") == len(ch["text"].split()) and not old.get("error"):
+            notes.append(old); reused += 1
+            continue
         progress(i, len(chunks), f"notes: {ch['title'][:60]}")
         try:
             n = llm.chat(llm.skill("section_notes", title=ch["title"], text=ch["text"]), model=model,
@@ -73,7 +80,7 @@ def section_notes(chunks, model, progress):
         n["key_numbers"] = [x for x in n["key_numbers"] if isinstance(x, dict) and x.get("value")]
         notes.append(dict(n, title=ch["title"], parent=ch.get("parent", ""), appendix=ch.get("appendix", False),
                           words=len(ch["text"].split())))
-    progress(len(chunks), len(chunks), f"{len(notes)} sections noted")
+    progress(len(chunks), len(chunks), f"{len(notes)} sections noted" + (f" ({reused} reused)" if reused else ""))
     return notes
 
 

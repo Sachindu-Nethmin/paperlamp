@@ -78,6 +78,46 @@ class Length(unittest.TestCase):
         self.assertEqual(script.fit_length(ch, minutes=30), 0)
 
 
+class OneAtATime(unittest.TestCase):
+    def test_jobs_never_overlap_and_memory_is_freed_when_idle(self):
+        import threading, time
+        sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+        import app
+        events, active, freed = [], [], []
+
+        class FakeJob:
+            def __init__(self, jid):
+                self.jid = jid
+
+            def run(self):
+                active.append(self.jid)
+                events.append(("start", self.jid, len(active)))
+                time.sleep(0.2)
+                active.remove(self.jid)
+                events.append(("end", self.jid))
+
+            def log(self, msg):
+                pass
+
+        orig_job, orig_free = app.pipeline.Job, app.memory.free_all
+        app.pipeline.Job = FakeJob
+        app.memory.free_all = lambda: freed.append(1) or {"ollama_gb": 0, "voice_servers": 0}
+        try:
+            r = app.Runner()
+            self.assertEqual(r.add("a"), 0)
+            self.assertEqual(r.add("b"), 1)
+            self.assertIsNone(r.add("b"))                       # already waiting
+            for _ in range(50):
+                if len(events) == 4 and freed:
+                    break
+                time.sleep(0.05)
+        finally:
+            app.pipeline.Job, app.memory.free_all = orig_job, orig_free
+        self.assertEqual([e[:2] for e in events], [("start", "a"), ("end", "a"), ("start", "b"), ("end", "b")])
+        self.assertTrue(all(e[2] == 1 for e in events if e[0] == "start"))   # never two at once
+        self.assertEqual(len(freed), 1)                          # freed once, when the queue emptied
+
+
 class Memory(unittest.TestCase):
     def test_unload_all_frees_every_model(self):
         from paperlamp import llm

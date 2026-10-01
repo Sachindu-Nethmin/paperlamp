@@ -5,7 +5,7 @@ previous one ended, plus a short pause (longer between chapters).
 """
 import json, pathlib, re, shutil, subprocess, wave
 
-from . import render
+from . import memory, render
 
 FPS = render.FPS
 LEAD, GAP_IN, GAP_CH, TAIL = 0.5, 0.35, 0.85, 2.5
@@ -158,7 +158,8 @@ def build(job, sentences, durs, meta, pages, progress, voice_note=""):
     # build each page's camera canvas once, before the parallel workers read them
     for pg in sorted({r["align"]["page"] for r in rows if r.get("align")}):
         render.page_canvas(job / "paper.pdf", pg, job / "cam")
-    render.render_all(jobs, lambda d, n, m: progress(1 + d / n * 2, 4, m))
+    workers = memory.render_workers()                    # as many as the free memory allows
+    render.render_all(jobs, lambda d, n, m: progress(1 + d / n * 2, 4, f"{m} · {workers} workers"), workers=workers)
     (work / "concat.txt").write_text("".join(f"file '{j[0].name}'\n" for j in jobs))
     run(["ffmpeg", "-y", "-hide_banner", "-f", "concat", "-safe", "0", "-i", "concat.txt", "-c", "copy",
          "video_nocap.mp4"], cwd=work)
@@ -170,5 +171,6 @@ def build(job, sentences, durs, meta, pages, progress, voice_note=""):
          "-vf", "ass=captions.ass", "-r", str(FPS), "-pix_fmt", "yuv420p", "-c:v", "libx264", "-preset", "medium",
          "-crf", "20", "-c:a", "aac", "-b:a", "192k", "-shortest", "-movflags", "+faststart", str(final)], cwd=work)
     (job / "timeline.json").write_text(json.dumps(dict(rows=rows, total=total), indent=1))
+    shutil.rmtree(work, ignore_errors=True)               # the per-sentence clips are in the final video now
     progress(4, 4, f"{int(total // 60)}:{int(total % 60):02d} video")
     return final, total
