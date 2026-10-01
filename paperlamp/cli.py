@@ -1,6 +1,6 @@
 """Command-line runner (same pipeline as the web UI).
 
-    python3 -m paperlamp.cli paper.pdf [--minutes 8 | --whole-paper] [--model ornith:9b]
+    python3 -m paperlamp.cli paper.pdf [--minutes 8 | --whole-paper | --pass 1|2|3] [--model ornith:9b]
                                  [--voice say|chatterbox] [--say-voice Samantha]
                                  [--chatterbox-python PY --reference WAV] [--quiz N]
                                  [--import script.json] [--resume JOB_ID --from STAGE]
@@ -16,6 +16,8 @@ def main():
     ap.add_argument("--minutes", type=float, default=8)
     ap.add_argument("--whole-paper", action="store_true",
                     help="explain every section in order; length follows the paper (ignores --minutes)")
+    ap.add_argument("--pass", dest="read_pass", type=int, choices=[1, 2, 3],
+                    help="a reading-pass video: 1 = is it relevant (5-10 min), 2 = the evidence, 3 = the method in depth")
     ap.add_argument("--quiz", type=int, default=0, help="self-check questions at the end of the video (default none)")
     ap.add_argument("--model", default=pipeline.DEFAULTS["model"])
     ap.add_argument("--voice", choices=["say", "chatterbox"], default="say")
@@ -36,7 +38,7 @@ def main():
         settings = dict(minutes=a.minutes, model=a.model, voice=a.voice, say_voice=a.say_voice,
                         chatterbox_python=a.chatterbox_python, voice_reference=a.reference,
                         script_source="import" if a.script else "ollama", quiz_in_video=a.quiz,
-                        depth="full" if a.whole_paper else "summary")
+                        depth=f"pass{a.read_pass}" if a.read_pass else "full" if a.whole_paper else "summary")
         job = pipeline.Job.create(pathlib.Path(a.pdf).read_bytes(), pathlib.Path(a.pdf).name, settings)
         if a.script:
             job.write("script_import.json", json.loads(pathlib.Path(a.script).read_text()))

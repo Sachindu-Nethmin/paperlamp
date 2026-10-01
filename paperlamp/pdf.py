@@ -399,10 +399,25 @@ def find_figures(pdf, cache, progress=lambda i, n: None):
             in_col = [l for l in lns if min(l["x1"], cx1) - max(l["x0"], cx0) >
                       0.5 * min(l["x1"] - l["x0"], cx1 - cx0)]
             # caption block: continuation lines directly below (same column)
+            # caption block: the caption's own words, line after line, inside its column
+            # (word-based, so a caption beside wrapped text keeps all of its lines)
+            cap_words = [w for w in ws if w[0] >= cap["x0"] - 6 and w[2] <= cx1 + 2]
             cap_bot = cap["y1"]
-            for l in sorted(in_col, key=lambda l: l["y0"]):
-                if 0 < l["y0"] - cap_bot < 4 and l["x0"] >= cap["x0"] - 6:
-                    cap_bot = l["y1"]
+            while True:
+                nxt = [w for w in cap_words if 0 < w[1] - cap_bot < 4]
+                if not nxt:
+                    break
+                top = min(w[1] for w in nxt)
+                cap_bot = max(w[3] for w in nxt if w[1] - top < 2.5)
+            cap_text = " ".join(w[4] for w in sorted(
+                [w for w in cap_words if cap["y0"] - 1 <= w[1] and w[3] <= cap_bot + 1],
+                key=lambda w: (round(w[1] / 2.5), w[0])))
+            # rejoin words split across lines ("re- sults"), keeping real compounds
+            # ("talking- head" stays "talking-head" when the page spells it that way)
+            page_words = {w[4].strip(".,;:()") for w in ws}
+            cap_text = re.sub(r"\b([A-Za-z]+)- ([a-z]+)\b",
+                              lambda m: f"{m.group(1)}-{m.group(2)}" if f"{m.group(1)}-{m.group(2)}" in page_words
+                              else m.group(1) + m.group(2), cap_text)
             # a "line" that runs from wrapped text into the float (a gap at the column edge)
             # belongs to the float, so it doesn't bound it
             split_by_edge = lambda l: any((g0 < cx0 + 12 and g1 > cx0 - 4) or (g0 < cx1 + 4 and g1 > cx1 - 12)
@@ -450,7 +465,7 @@ def find_figures(pdf, cache, progress=lambda i, n: None):
             page_image(pdf, page, cache).crop(tuple(int(round(v * SCALE)) for v in box)).save(path)
             seen.add(cap["label"])
             found.append(dict(id=fid, label=cap["label"], kind=cap["kind"], page=page,
-                              box=[round(v, 1) for v in box], caption=re.sub(r"\s+", " ", cap["text"])[:400],
+                              box=[round(v, 1) for v in box], caption=re.sub(r"\s+", " ", cap_text or cap["text"])[:600],
                               caption_box=[round(cap[k], 1) for k in ("x0", "y0", "x1", "y1")],
                               file=f"figs/{fid}.png", size=Image.open(path).size))
     progress(meta["pages"], meta["pages"])

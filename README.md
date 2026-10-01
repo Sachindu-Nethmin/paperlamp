@@ -3,8 +3,8 @@
 Turn a research paper PDF into a narrated, captioned explainer video, **entirely offline**.
 A small local model (via [Ollama](https://ollama.com)) writes the script, every number is
 checked against the paper, and a "document camera" moves across the real PDF pages while a
-highlighter sweeps along the lines being explained, like a lamp held over the page. The video
-ends with a short self-check quiz. No internet connection or external AI service is used at
+highlighter sweeps along the sentence being explained, like a lamp held over the page. No
+internet connection or external AI service is used at
 any point.
 
 _Formerly "paper2video". Renamed because two research projects already use that name
@@ -22,12 +22,31 @@ _Formerly "paper2video". Renamed because two research projects already use that 
 | 4. Take notes | per-section facts: key numbers (copied verbatim), claims, method, limitations | Ollama |
 | 5. Write the script | chapter by chapter from the notes: intro, the paper, the paper's sections, limitations, takeaway. Each chapter is told which figures and tables it should walk through (with their captions) | Ollama |
 | 6. Check every number | each number must occur in the paper; otherwise the model repairs the sentence or it is removed | Python |
-| 7. Self-check questions | multiple-choice questions from the notes; every number in a question and its answer is checked; a few end the video, the full set is saved as `quiz.md` | Ollama + Python |
+| 7. Self-check questions (optional, off by default) | multiple-choice questions from the notes; every number in a question and its answer is checked and each question is re-asked to confirm its answer; they can end the video, and the set is saved as `quiz.md` | Ollama + Python |
 | 8. Match sentences to the page | each sentence → page, lines to highlight, region to frame (figures/tables by label, else shared numbers and rare words) | Python |
 | 9. Record narration | macOS system voice, or a clone of **your own** voice with Chatterbox | `say` / Chatterbox |
-| 10. Render and assemble | document-camera video (pan/zoom, a highlighter that sweeps along the matched lines as the sentence is spoken, figure outline), quiz cards with thinking time, captions (ASS burned in + SRT), −14 LUFS audio, YouTube description with chapters | Pillow + ffmpeg |
+| 10. Render and assemble | document-camera video (pan/zoom; a highlighter that sweeps along the paper's own sentence, start to full stop, as it is spoken; figures kept bright with their caption highlighted), optional quiz cards, captions (ASS burned in + SRT), −14 LUFS audio, YouTube description with chapters | Pillow + ffmpeg |
 
-### Two lengths
+### Kinds of video
+
+**Reading passes** follow S. Keshav's three-pass method ("How to Read a Paper", ACM SIGCOMM
+Computer Communication Review, 2007), so a video does the reading the way an experienced reader
+would:
+
+| Pass | What the video covers | Typical length |
+|---|---|---|
+| **1. Is it relevant?** | title, authors and venue (preprints flagged); the abstract and introduction; how the paper is organised (each section heading highlighted); the conclusion; every figure and table read with its own caption; the references (the works it cites most, highlighted in the list); then what problem, what they did, what they found, and who should read further | 5 to 10 min |
+| **2. The evidence** | the experimental setup first (data, baselines, metrics), then each result with what it compares, the limitations, and the references the evaluation leans on | 10 to 20 min |
+| **3. The method in depth** | every method section step by step, the appendix, the assumptions the method rests on, and what you'd need to reproduce it | 20+ min |
+
+```bash
+python3 -m paperlamp.cli paper.pdf --pass 1 --voice chatterbox
+```
+
+Pass 1 reads figure captions as the authors wrote them rather than paraphrasing them: small local
+models tend to mix up which result belongs to which figure.
+
+Two other kinds:
 
 - **Target minutes** (default 8): sections share a sentence budget, and the finished script is
   trimmed to a hard word budget (about 130 words per minute of video), so the video lands near the
@@ -58,12 +77,12 @@ both paths in `config.json` (see `config.example.json`).
 ```bash
 python3 app.py                     # web UI at http://127.0.0.1:8765
 python3 -m paperlamp.cli paper.pdf --minutes 8 --voice say
-python3 -m paperlamp.cli paper.pdf --whole-paper --voice chatterbox --quiz 3
+python3 -m paperlamp.cli paper.pdf --whole-paper --voice chatterbox
 python3 -m paperlamp.cli --resume <job-id> --from verify     # re-run after editing script.json
 ```
 
 Outputs land in `jobs/<id>/out/`: `video.mp4`, `captions.srt`, `description.txt`, `script.md`,
-`quiz.md` (questions and answer key, e.g. for checking what students understood).
+and `quiz.md` when the quiz is on (questions and answer key, e.g. for checking what students understood).
 
 ## Choosing the local model
 
@@ -105,7 +124,7 @@ remembering the author's face). PaperLamp explains a paper to a reader who didn'
 shows the source instead of redrawing it, and it never animates anyone's face.
 
 Ideas taken from that work, with thanks:
-- the end-of-video quiz follows Paper2Video's **PresentQuiz** metric (questions generated from the
+- the optional quiz follows Paper2Video's **PresentQuiz** metric (questions generated from the
   paper), turned into a self-check for people;
 - the highlighter sweep is backed by their cursor ablation, where a visible cursor raised an AI
   viewer's localisation accuracy from 0.084 to 0.633 (measured with an AI viewer, not people);

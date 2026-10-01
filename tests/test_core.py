@@ -269,6 +269,75 @@ class SentenceHighlight(unittest.TestCase):
         self.assertTrue(align._ends_sentence("work.)"))
 
 
+class Passes(unittest.TestCase):
+    TEXT = ("1 Introduction\nWe build on PPTAgent [3] and on [3, 4] and [1-2].\nPPTAgent is strong [3].\n"
+            "References\n[1] Ann Lee and Bo Kim. A study of slides. In ACL, 2023.\n"
+            "[2] DeepMind. Veo 3 technical report. 2025.\n"
+            "[3] Hao Zheng, Xinyan Guan, and Le Sun. Pptagent: Generating and evaluating presentations.\n"
+            "    arXiv preprint, 2025.\n[4] Jo Park. Talking heads. 2024.\n")
+
+    def test_references_and_most_cited(self):
+        from paperlamp import passes
+        refs, body = passes.references(self.TEXT)
+        self.assertEqual(sorted(refs), [1, 2, 3, 4])
+        self.assertEqual(passes.cited_counts(body).most_common(1), [(3, 3)])
+        self.assertEqual(passes.short_ref(refs[3], body), "PPTAgent (Zheng and colleagues, 2025)")
+        self.assertEqual(passes.short_ref(refs[2], body), "Veo 3 technical report (DeepMind, 2025)")
+        out = passes.reference_sentences(self.TEXT)
+        self.assertEqual(out[0]["text"], "The reference list has four entries.")
+        self.assertTrue(out[-1]["hold"])
+        self.assertEqual(out[1]["text"], "The work it cites most is PPTAgent (Zheng and colleagues, 2025).")
+        self.assertEqual(out[1]["anchor"], {"text": "[3]", "reference": True})
+
+    def test_structure_tour(self):
+        from paperlamp import passes
+        doc = {"sections": [dict(num="0", title="Front matter", parent="Front matter", appendix=False),
+                            dict(num="1", title="Introduction", parent="Introduction", appendix=False),
+                            dict(num="2.1", title="Data", parent="Benchmark", appendix=False),
+                            dict(num="2.2", title="Metrics", parent="Benchmark", appendix=False),
+                            dict(num="A.1", title="Prompts", parent="Prompts", appendix=True)]}
+        out = passes.structure_sentences(doc)
+        self.assertEqual(out[0]["text"], "The main text has two sections.")
+        self.assertEqual(out[0]["anchor"]["text"], "1 Introduction")
+        self.assertEqual(out[2]["text"], "Section 2, Benchmark, covers Data and Metrics.")
+        self.assertEqual(out[2]["anchor"]["text"], "2 Benchmark")
+        self.assertEqual(out[-1]["text"], "An appendix adds Prompts.")
+
+    def test_figure_falls_back_to_its_caption(self):
+        from paperlamp import passes
+        w = passes.Writer({}, "m", lambda *a: None, steps=3)
+        w.ask = lambda *a, **k: ["This shows something else entirely, says Table 9."]
+        figs = [dict(label="Figure 2", page=3, box=[0, 0, 1, 1], caption="Figure 2: Statistics of the benchmark. More.")]
+        out = passes.figure_sentences(w, figs, [])
+        self.assertEqual(out[0], {"text": "Figure 2 shows statistics of the benchmark.", "figure": "Figure 2"})
+
+    def test_caption_figures_read_the_caption(self):
+        from paperlamp import passes
+        figs = [dict(label="Table 2", page=8, box=[0, 0, 1, 1],
+                     caption="Table 2: Detailed results across three baselines. Bold and Underline indicates the "
+                             "best and the second. NA means not applicable."),
+                dict(label="Figure 1", page=2, box=[0, 0, 1, 1],
+                     caption="Figure 1: This work solves two problems: Left: how to create a video? Right: how to "
+                             "evaluate it? More text here.")]
+        out = passes.caption_figures(None, figs)
+        self.assertEqual([x["text"] for x in out], ["Figure 1: This work solves two problems: Left: how to create a video?",
+                                                    "Right: how to evaluate it?",
+                                                    "Table 2: Detailed results across three baselines."])
+        self.assertEqual({x["figure"] for x in out}, {"Figure 1", "Table 2"})
+
+    def test_anchor_on_heading_and_reference(self):
+        from paperlamp import align
+        line = SentenceHighlight.line
+        idx = [line(3, 100, "P APER 2V IDEO B ENCHMARK"), line(3, 120, "Text of the section goes on here today."),
+               line(12, 100, "[38] Hao Zheng, Xinyan Guan, and Le Sun. Pptagent: Generating"),
+               line(12, 112, "and evaluating presentations. arXiv preprint, 2025."),
+               line(12, 124, "[39] Next entry starts here.")]
+        a = align._anchor(idx, {"text": "3 Paper2Video Benchmark", "heading": True})
+        self.assertEqual((a["page"], a["highlight"]), (3, [idx[0]["box"]]))
+        r = align._anchor(idx, {"text": "[38]", "reference": True})
+        self.assertEqual(r["highlight"], [idx[2]["box"], idx[3]["box"]])
+
+
 class Timeline(unittest.TestCase):
     def test_pause_after_quiz_question(self):
         s = [dict(id="a", chapter="Q", text="q", pause=4.0), dict(id="b", chapter="Q", text="a")]

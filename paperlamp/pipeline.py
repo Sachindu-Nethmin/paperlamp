@@ -6,7 +6,7 @@ stage is kept in state.json, which the web UI polls.
 """
 import json, pathlib, re, shutil, threading, time, traceback, uuid
 
-from . import align, analyze, assemble, llm, pdf, quiz, script, tts, verify
+from . import align, analyze, assemble, llm, passes, pdf, quiz, script, tts, verify
 from .speak import to_spoken
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -135,7 +135,7 @@ class Job:
                                     sections=[dict(sc, words=len(sc["text"].split())) for sc in secs]))
         # the script never uses acknowledgements etc. (nor related work and appendices in a
         # summary), so don't spend model time on them
-        whole = self.state["settings"].get("depth") == "full"
+        whole = self.state["settings"].get("depth") in ("full", "pass3")      # these read the appendix too
         skip = script.skip_re(self.state["settings"].get("depth"))
         self.write("chunks.json", pdf.chunks([sc for sc in secs if (whole or not sc["appendix"])
                                               and not skip.search(sc["title"] + " " + sc["parent"])]))
@@ -158,8 +158,13 @@ class Job:
     def stage_script(self, cb):
         s = self.state["settings"]
         t0 = time.time()
-        sc = script.write(self.read("meta.json"), self.read("notes.json"), float(s["minutes"]), s["model"], cb,
-                          depth=s.get("depth", "summary"), figures=self.read("figs.json"))
+        depth = s.get("depth", "summary")
+        if depth in passes.PASSES:                  # reading-pass videos (Keshav's three passes)
+            sc = passes.write(self.read("meta.json"), self.read("notes.json"), s["model"], cb, depth,
+                              self.read("figs.json"), self.read("doc.json"), (self.dir / "paper.txt").read_text())
+        else:
+            sc = script.write(self.read("meta.json"), self.read("notes.json"), float(s["minutes"]), s["model"], cb,
+                              depth=depth, figures=self.read("figs.json"))
         sc["seconds"] = round(time.time() - t0, 1)
         self.write("script.json", sc)
 

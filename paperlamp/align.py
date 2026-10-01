@@ -160,6 +160,39 @@ def sentence_span(idx, i, qset, idf=None, reach=6, max_lines=8):
              max(w[2] for w in by_line[ln]), max(w[3] for w in by_line[ln])] for ln in lines]
 
 
+def _anchor(idx, anchor, refs=()):
+    """Align a sentence to a named spot: a section heading (anchor["heading"]) or a
+    reference entry (anchor["reference"], e.g. "[38]", highlighted with its lines)."""
+    key = squash(anchor["text"])
+    if anchor.get("reference"):
+        hits = [i for i, ln in enumerate(idx) if ln["text"].strip().startswith(anchor["text"])
+                and (not refs or i in refs or i > max(refs))]
+    else:
+        # the section number is often its own text segment ("1" ... "I NTRODUCTION"),
+        # so a heading line may hold the title alone
+        num, _, title = anchor["text"].partition(" ")
+        bare = squash(title) if title and re.fullmatch(r"[A-Z]?[\d.]*", num) else None
+        hits = [i for i, ln in enumerate(idx) if _is_heading(ln) and
+                (squash(ln["text"]).startswith(key) or (bare and squash(ln["text"]) == bare))]
+        hits = hits or [i for i, ln in enumerate(idx) if key and key in squash(ln["text"]) and len(ln["text"]) < 100]
+    if not hits:
+        return None
+    i = hits[0]
+    lines = [i]
+    if anchor.get("reference"):                       # the rest of the entry, until the next "[n]"
+        j = i
+        for _ in range(4):
+            j = _next_line(idx, j, 1)
+            if j is None or re.match(r"^\s*\[\d+\]", idx[j]["text"]):
+                break
+            lines.append(j)
+    hl = [idx[j]["box"] for j in lines]
+    focus = _paragraph(idx, i)
+    focus = [min(focus[0], *(b[0] for b in hl)), min(focus[1], *(b[1] for b in hl)),
+             max(focus[2], *(b[2] for b in hl)), max(focus[3], *(b[3] for b in hl))]
+    return dict(page=idx[i]["page"], focus=focus, highlight=hl)
+
+
 def run(script, idx, figures, progress):
     for ln in idx:                                     # re-tokenize: older indexes counted citation numbers
         ln["toks"] = tokens(ln["text"])
@@ -184,12 +217,23 @@ def run(script, idx, figures, progress):
         home = _section_pages(idx, ch["title"])
         for s in ch["sentences"]:
             progress(k, len(all_s), "matching sentences to the page"); k += 1
+            if s.get("hold"):                             # a framing sentence: stay where we are
+                s["align"] = dict(prev, highlight=[])
+                continue
+            if s.get("anchor"):                           # a heading or a reference entry named by the script
+                a = _anchor(idx, s["anchor"], refs)
+                if a:
+                    s["align"] = a
+                    prev = a
+                    continue
             ref = REF.search(s["text"])
-            label = f"{'table' if ref and ref.group(1).lower().startswith('tab') else 'figure'} {ref.group(2)}" if ref else ""
+            label = (s.get("figure") or "").lower() or (
+                f"{'table' if ref and ref.group(1).lower().startswith('tab') else 'figure'} {ref.group(2)}" if ref else "")
             if label in figs:
                 f = figs[label]
+                num = label.split()[-1]
                 cap = [ln for ln in idx if ln["page"] == f["page"] and
-                       re.match(rf"^(figure|fig\.|table)\s+{re.escape(ref.group(2))}\b", ln["text"].lower())]
+                       re.match(rf"^(figure|fig\.|table)\s+{re.escape(num)}\b", ln["text"].lower())]
                 # outline and frame the figure together with its caption line, so the
                 # outline goes round the highlighted caption instead of through it
                 # (the figure finder records the caption's own box; a caption beside wrapped

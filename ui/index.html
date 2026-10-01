@@ -90,11 +90,17 @@ video{width:100%;border-radius:12px;background:#000;margin-top:14px}
       <label>Local model (Ollama)</label>
       <select id="model"></select>
       <div class="hint" id="modelHint"></div>
-      <label>Length</label>
-      <div class="seg" id="depthSeg"><button data-v="summary" class="on">Target minutes</button><button data-v="full">Whole paper</button></div>
+      <label>Kind of video</label>
+      <select id="depthSel">
+        <option value="summary">Explainer of a target length</option>
+        <option value="full">Whole paper, section by section</option>
+        <option value="pass1">Reading pass 1: is it relevant? (5 to 10 min)</option>
+        <option value="pass2">Reading pass 2: the evidence</option>
+        <option value="pass3">Reading pass 3: the method in depth</option>
+      </select>
       <div id="minBox"><label>Target length: <b id="minv">8</b> min</label>
       <input type="range" id="minutes" min="3" max="30" value="8"></div>
-      <div class="hint" id="fullHint" hidden>Every section in order, each figure and table explained where the paper discusses it, appendix in brief. Length follows the paper (often 15 to 30 min).</div>
+      <div class="hint" id="fullHint" hidden></div>
       <label>Voice</label>
       <div class="seg" id="voiceSeg"><button data-v="say" class="on">macOS voice</button><button data-v="chatterbox">My cloned voice</button></div>
       <div id="sayBox"><label>System voice</label><select id="sayVoice"><option value="">Default</option></select></div>
@@ -128,7 +134,13 @@ function seg(id, cb){ document.querySelectorAll(`#${id} button`).forEach(b => b.
   document.querySelectorAll(`#${id} button`).forEach(x => x.classList.toggle("on", x === b)); cb(b.dataset.v); }); }
 seg("voiceSeg", v => { voice = v; $("#sayBox").hidden = v !== "say"; $("#cbBox").hidden = v !== "chatterbox"; });
 seg("srcSeg", v => { source = v; $("#importBox").hidden = v !== "import"; });
-seg("depthSeg", v => { depth = v; $("#minBox").hidden = v === "full"; $("#fullHint").hidden = v !== "full"; });
+const DEPTH_HINTS = {
+  full: "Every section in order, each figure and table explained where the paper discusses it, appendix in brief. Length follows the paper (often 15 to 30 min).",
+  pass1: "Title, abstract and introduction; how the paper is organised; the conclusion; every figure and table; the references; then what problem, what they did, what they found, and who should read further.",
+  pass2: "The experimental setup first, then each result with what it compares, the limitations, and the references worth following up.",
+  pass3: "The method step by step with the appendix, the assumptions it rests on, and what you would need to reproduce it."};
+$("#depthSel").onchange = e => { depth = e.target.value; $("#minBox").hidden = depth !== "summary";
+  $("#fullHint").hidden = depth === "summary"; $("#fullHint").textContent = DEPTH_HINTS[depth] || ""; };
 $("#minutes").oninput = e => $("#minv").textContent = e.target.value;
 $("#drop").onclick = () => $("#file").click();
 $("#file").onchange = e => pick(e.target.files[0]);
@@ -194,7 +206,7 @@ async function poll(){
     <div class="sub">${esc((meta.authors||[]).slice(0,6).join(", "))} ${meta.venue?"· "+esc(meta.venue):""}</div>
     <div class="overall"><div style="width:${(overall*100).toFixed(1)}%"></div></div>
     <div class="stats"><span><b>${Math.round(overall*100)}%</b> overall</span><span>model <b>${esc(j.settings.model)}</b></span>
-      <span>voice <b>${esc(j.settings.voice)}</b></span><span>${j.settings.depth==="full" ? "<b>whole paper</b>" : `target <b>${j.settings.minutes} min</b>`}</span></div>
+      <span>voice <b>${esc(j.settings.voice)}</b></span><span>${({full: "<b>whole paper</b>", pass1: "<b>reading pass 1</b>", pass2: "<b>reading pass 2</b>", pass3: "<b>reading pass 3</b>"})[j.settings.depth] || `target <b>${j.settings.minutes} min</b>`}</span></div>
     <div class="stages">` + st.map(([k,s]) => {
       const el = s.started ? ((s.ended || Date.now()/1000) - s.started) : null;
       return `<div class="stage ${s.status}"><div class="dot">${s.status==="done"?"✓":s.status==="error"?"!":""}</div>
