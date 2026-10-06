@@ -8,21 +8,36 @@ import json, pathlib, re, time, urllib.request
 OLLAMA = "http://127.0.0.1:11434"
 DEFAULT_MODEL = "ornith:9b"          # smallest local model with zero invented numbers in bench/
 SKILLS = pathlib.Path(__file__).resolve().parent / "skills"
+# Ollama is on this machine: never route it through a system proxy (an app launched from
+# Finder picks up the Mac's proxy settings, and a proxy can't reach our 127.0.0.1)
+_open = urllib.request.build_opener(urllib.request.ProxyHandler({})).open
+# bench/results.json (16 GB Apple M5): fewest invented numbers first, then the most key
+# numbers found. Models that were not benchmarked rank after these.
+BENCH_ORDER = ["ornith:9b", "MichelRosselli/bonsai-27b:latest", "gemma4:E4B", "qwen3:14b"]
 
 
 def available():
     """Installed models, or [] if Ollama isn't running."""
     try:
-        with urllib.request.urlopen(OLLAMA + "/api/tags", timeout=5) as r:
+        with _open(OLLAMA + "/api/tags", timeout=5) as r:
             return [m["name"] for m in json.load(r)["models"]]
     except Exception:
         return []
 
 
+def best_model(installed, fallback=DEFAULT_MODEL):
+    """The best installed model by the benchmark; else the fallback if it is installed,
+    else any installed model."""
+    for m in BENCH_ORDER:
+        if m in installed:
+            return m
+    return fallback if fallback in installed or not installed else installed[0]
+
+
 def loaded():
     """Models Ollama currently holds in memory: [(name, bytes)]."""
     try:
-        with urllib.request.urlopen(OLLAMA + "/api/ps", timeout=5) as r:
+        with _open(OLLAMA + "/api/ps", timeout=5) as r:
             return [(m["name"], m.get("size_vram") or m.get("size") or 0) for m in json.load(r).get("models", [])]
     except Exception:
         return []
@@ -33,7 +48,7 @@ def unload(model=DEFAULT_MODEL):
     try:
         req = urllib.request.Request(OLLAMA + "/api/generate", json.dumps({"model": model, "keep_alive": 0}).encode(),
                                      {"Content-Type": "application/json"})
-        urllib.request.urlopen(req, timeout=60).read()
+        _open(req, timeout=60).read()
     except Exception:
         pass
 
@@ -74,7 +89,7 @@ def chat(prompt, model=DEFAULT_MODEL, want_json=True, ctx=8192, max_tokens=2048,
             req = urllib.request.Request(OLLAMA + "/api/chat", json.dumps(body).encode(),
                                          {"Content-Type": "application/json"})
             out, n, t0 = [], 0, time.time()
-            with urllib.request.urlopen(req, timeout=3600) as r:
+            with _open(req, timeout=3600) as r:
                 for line in r:
                     if not line.strip():
                         continue
