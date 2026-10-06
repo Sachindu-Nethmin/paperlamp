@@ -8,6 +8,7 @@
 :root{--bg:#0E1726;--panel:#16233A;--line:#26365A;--text:#F5F7FA;--muted:#8FA0BC;--dim:#56678A;--accent:#F0A868;
       --good:#7FC8A9;--bad:#E0796B;--r:14px}
 *{box-sizing:border-box;margin:0;padding:0}
+[hidden]{display:none!important}
 body{background:var(--bg);color:var(--text);font:15px/1.5 -apple-system,"Helvetica Neue",Arial,sans-serif}
 header{display:flex;align-items:center;justify-content:space-between;padding:18px 28px;border-bottom:1px solid var(--line)}
 header h1{font-size:20px;font-weight:800;letter-spacing:-.01em}
@@ -58,6 +59,28 @@ input[type=range]{width:100%}
 .pct{text-align:right;font-variant-numeric:tabular-nums;color:var(--muted);font-size:13px}
 .err{margin-top:14px;background:#2a1717;border:1px solid #5a2f2f;color:#f3c2bb;border-radius:10px;padding:12px;font-size:13px;white-space:pre-wrap}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px}
+nav.views{display:flex;gap:6px}
+nav.views button{background:none;border:1px solid var(--line);color:var(--muted);border-radius:10px;padding:7px 16px;font:inherit;cursor:pointer}
+nav.views button.on{background:var(--accent);border-color:var(--accent);color:#1b1206;font-weight:700}
+#library{max-width:1500px;margin:0 auto;padding:24px 28px}
+.libgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:18px}
+.vcard{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;cursor:pointer;display:flex;flex-direction:column}
+.vcard:hover{border-color:var(--accent)}
+.vcard .thumb{aspect-ratio:16/9;background:#0f1a2d;display:grid;place-items:center;color:var(--dim);font-size:13px;position:relative}
+.vcard .thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.vcard .len{position:absolute;right:8px;bottom:8px;background:rgba(0,0,0,.75);color:#fff;font-size:12px;padding:1px 6px;border-radius:5px}
+.vcard .meta{padding:12px 14px}
+.vcard .t{font-weight:700;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.vcard .s{font-size:12px;color:var(--dim);margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.lic{font-size:11px;padding:1px 8px;border-radius:99px;border:1px solid #2f5a4a;color:var(--good)}
+.lic.no{border-color:#5a2f2f;color:var(--bad)}.lic.nc{border-color:#5a4a2f;color:var(--accent)}
+.vdetail{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:22px}
+@media(max-width:1100px){.vdetail{grid-template-columns:1fr}}
+.vdetail video{width:100%;border-radius:12px;background:#000}
+.field{margin-top:14px}.field .lab{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--muted);margin-bottom:6px}
+.field pre,.field .box{background:#0f1a2d;border:1px solid var(--line);border-radius:10px;padding:10px;font:13px/1.45 -apple-system,"Helvetica Neue",Arial,sans-serif;white-space:pre-wrap;max-height:260px;overflow:auto}
+.copy{background:none;border:1px solid var(--line);color:var(--text);border-radius:8px;padding:3px 10px;font-size:12px;cursor:pointer}
+.grid2 > #dScript:empty{display:none}
 @media(max-width:1200px){.grid2{grid-template-columns:1fr}}
 video{width:100%;border-radius:12px;background:#000;margin-top:14px}
 .links{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
@@ -99,9 +122,11 @@ video{width:100%;border-radius:12px;background:#000;margin-top:14px}
 <body>
 <header>
   <h1>Paper<span>Lamp</span> <small style="color:var(--dim);font-weight:500;font-size:13px">· offline research-paper explainers</small></h1>
+  <nav class="views"><button data-v="make" class="on">Make videos</button><button data-v="library">Library</button></nav>
   <div class="tools" id="tools"></div>
 </header>
-<main>
+<div id="library" hidden></div>
+<main id="make">
   <section>
     <div class="card">
       <h2>New video</h2>
@@ -111,12 +136,16 @@ video{width:100%;border-radius:12px;background:#000;margin-top:14px}
       <select id="model"></select>
       <div class="hint" id="modelHint"></div>
       <label>Kind of video</label>
-      <div class="seg" id="kindSeg"><button data-v="explainer" class="on">Explainer</button><button data-v="reading">Reading pass</button></div>
+      <div class="seg" id="kindSeg"><button data-v="explainer" class="on">Explainer</button><button data-v="study">Study</button><button data-v="reading">Reading pass</button></div>
+      <div class="hint" id="studyBox" hidden>Built on what learning research says works, to get the most out of the paper in the least time: the big picture and the key terms first, then short segments on the method, results and discussion, each opening with a question to keep in mind and ending with its answer; every figure explained, the limitations read critically, and recall questions at the end, answered after a pause. The description lists the questions again, to test yourself the next day. Related work and the appendix are left out. About 12 to 14 min for a 20-page paper.</div>
       <div id="explainerBox">
-        <div class="seg sub" id="lenSeg"><button data-v="summary" class="on">Target length</button><button data-v="full">Whole paper</button></div>
-        <div id="minBox"><label>Target length: <b id="minv">8</b> min</label>
+        <div class="seg sub" id="lenSeg"><button data-v="auto" class="on">Auto</button><button data-v="core">Key sections</button><button data-v="summary">Target length</button><button data-v="read">Whole paper</button></div>
+        <div class="hint" id="coreHint" hidden>The methodology, results and discussion in detail, in the paper's order: how the study or system works step by step, every key result with its figures and tables, then what the results mean and their limitations. The introduction and related work only feed a short opening; the appendix is left out. Often 15 to 20 min.</div>
+        <div class="hint" id="autoHint">Each section gets the time its content needs: its key numbers, method steps and claims, and a walk through each figure and table. Nothing is padded to reach a length or cut to fit one. Related work and the appendix are left out.</div>
+        <div id="minBox" hidden><label>Target length: <b id="minv">8</b> min</label>
         <input type="range" id="minutes" min="3" max="30" value="8"></div>
-        <div class="hint" id="fullHint" hidden>Every section in order, each figure and table explained where the paper discusses it, appendix in brief. Length follows the paper (often 15 to 30 min).</div>
+        <div id="readBox" hidden><div class="hint">Every sentence of the paper, from the title to the last section, explained in plain words while the highlighter sits on that exact sentence. Headings are read as they are, every author by name, and each figure and table caption is explained with the figure on screen. Long: about 5 minutes of video per page, and recording it in your cloned voice takes several hours.</div>
+        <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="readAppendix" style="width:auto"> Also the appendix</label></div>
       </div>
       <div id="readingBox" hidden>
         <div class="phases" id="phases">
@@ -135,12 +164,15 @@ video{width:100%;border-radius:12px;background:#000;margin-top:14px}
       <div id="cbBox" hidden>
         <label>Python with chatterbox-tts</label><input type="text" id="cbPython" placeholder="/path/to/.venv/bin/python">
         <label>Reference recording (7–20 s WAV of your voice)</label><input type="text" id="cbRef" placeholder="/path/to/reference.wav">
-        <div class="hint">Cloning is slow on a laptop (~1 min per sentence). Only clone a voice you have permission to use.</div>
+        <div class="hint" id="voiceHint">Cloning is slow on a laptop (~1 min per sentence). Only clone a voice you have permission to use.</div>
       </div>
       <label>Self-check at the end</label>
       <select id="quizN"><option value="0">None</option><option value="2">2 questions</option>
         <option value="3">3 questions</option><option value="5">5 questions</option></select>
       <div class="hint">Questions are written from the paper and every number in them is checked. A longer set is saved as quiz.md for testing students.</div>
+      <label>Save finished videos to</label>
+      <input type="text" id="exportDir" placeholder="Leave empty to keep videos in the job folder">
+      <div class="hint">Optional. Every finished video gets its own numbered folder here, in the order you made the videos, with the captions, description, script and narration inside. The job folder keeps its own copy either way.</div>
       <label>Script source</label>
       <div class="seg" id="srcSeg"><button data-v="ollama" class="on">Write with local model</button><button data-v="import">Import script JSON</button></div>
       <div id="importBox" hidden><label>Script JSON</label><input type="file" id="scriptFile" accept="application/json"></div>
@@ -164,17 +196,24 @@ video{width:100%;border-radius:12px;background:#000;margin-top:14px}
 <script>
 const $ = s => document.querySelector(s);
 let pdfFile = null, voice = "say", source = "ollama", current = null, timer = null, setup = null, allJobs = [];
-let kind = "explainer", lenMode = "summary", phase = "pass1";
-const depthNow = () => kind === "reading" ? phase : lenMode;
-const KINDS = {summary: "Explainer", full: "Whole paper", pass1: "Pass 1", pass2: "Pass 2", pass3: "Pass 3"};
+let kind = "explainer", lenMode = "auto", phase = "pass1";
+const depthNow = () => kind === "reading" ? phase : kind === "study" ? "study" : lenMode;
+const KINDS = {summary: "Explainer", auto: "Auto length", core: "Key sections", read: "Whole paper", study: "Study", full: "Every section", pass1: "Pass 1", pass2: "Pass 2", pass3: "Pass 3"};
 const kindChip = (d, mins) => `<span class="kind ${d && d.startsWith("pass") ? "pass" : ""}">${d === "summary" || !d ? (mins ? mins + " min" : "Explainer") : KINDS[d]}</span>`;
 
 function seg(id, cb){ document.querySelectorAll(`#${id} button`).forEach(b => b.onclick = () => {
   document.querySelectorAll(`#${id} button`).forEach(x => x.classList.toggle("on", x === b)); cb(b.dataset.v); }); }
 seg("voiceSeg", v => { voice = v; $("#sayBox").hidden = v !== "say"; $("#cbBox").hidden = v !== "chatterbox"; });
+function pickVoice(v){
+  voice = v;
+  document.querySelectorAll("#voiceSeg button").forEach(b => b.classList.toggle("on", b.dataset.v === v));
+  $("#sayBox").hidden = v !== "say"; $("#cbBox").hidden = v !== "chatterbox";
+}
 seg("srcSeg", v => { source = v; $("#importBox").hidden = v !== "import"; });
-seg("kindSeg", v => { kind = v; $("#explainerBox").hidden = v !== "explainer"; $("#readingBox").hidden = v !== "reading"; });
-seg("lenSeg", v => { lenMode = v; $("#minBox").hidden = v !== "summary"; $("#fullHint").hidden = v !== "full"; });
+seg("kindSeg", v => { kind = v; $("#explainerBox").hidden = v !== "explainer"; $("#readingBox").hidden = v !== "reading";
+                      $("#studyBox").hidden = v !== "study"; });
+seg("lenSeg", v => { lenMode = v; $("#minBox").hidden = v !== "summary"; $("#readBox").hidden = v !== "read";
+                     $("#autoHint").hidden = v !== "auto"; $("#coreHint").hidden = v !== "core"; });
 document.querySelectorAll("#phases .phase").forEach(b => b.onclick = () => {
   document.querySelectorAll("#phases .phase").forEach(x => x.classList.toggle("on", x === b)); phase = b.dataset.v; });
 $("#minutes").oninput = e => $("#minv").textContent = e.target.value;
@@ -188,21 +227,26 @@ async function loadSetup(){
   setup = await (await fetch("/api/setup")).json();
   const t = setup.tools;
   $("#tools").innerHTML = Object.entries(t).map(([k,v]) => `<span class="chip ${v?"ok":"no"}">${v?"✓":"✗"} ${k}</span>`).join("");
-  const sizes = {"ornith:9b":"5.6 GB · recommended","MichelRosselli/bonsai-27b:latest":"4.4 GB · smallest","gemma4:E4B":"9.6 GB","qwen3:14b":"9.3 GB"};
-  $("#model").innerHTML = setup.models.map(m => `<option value="${m}" ${m===setup.default_model?"selected":""}>${m}${sizes[m]?"  ("+sizes[m]+")":""}</option>`).join("")
+  const sizes = {"ornith:9b":"5.6 GB","MichelRosselli/bonsai-27b:latest":"4.4 GB · smallest","gemma4:E4B":"9.6 GB","qwen3:14b":"9.3 GB"};
+  const label = m => [sizes[m], m === setup.default_model && "best available"].filter(Boolean).join(" · ");
+  $("#model").innerHTML = setup.models.map(m => `<option value="${m}" ${m===setup.default_model?"selected":""}>${m}${label(m)?"  ("+label(m)+")":""}</option>`).join("")
     || `<option value="">Ollama is not running</option>`;
-  $("#modelHint").textContent = setup.models.length ? "Recommended: the smallest model that invented no numbers in the benchmark (see README)." : "Start the Ollama app, then reload.";
+  $("#modelHint").textContent = setup.models.length ? "Picked for you: the installed model that invented the fewest numbers in the benchmark (see README). You can choose another." : "Start the Ollama app, then reload.";
   $("#sayVoice").innerHTML += setup.say_voices.map(v => `<option>${v}</option>`).join("");
   const c = setup.config || {};
   if(c.chatterbox_python) $("#cbPython").value = c.chatterbox_python;
   if(c.voice_reference) $("#cbRef").value = c.voice_reference;
+  if(c.export_dir) $("#exportDir").value = c.export_dir;
+  pickVoice(c.voice || "say");                 // the server says which voice is the default: yours, if set up
+  if(c.voice === "chatterbox") $("#voiceHint").textContent = "Narrating in your cloned voice.";
 }
 
 $("#go").onclick = async () => {
   $("#go").disabled = true;
   const settings = {model: $("#model").value, minutes: +$("#minutes").value, voice, say_voice: $("#sayVoice").value,
                     chatterbox_python: $("#cbPython").value, voice_reference: $("#cbRef").value, script_source: source,
-                    quiz_in_video: +$("#quizN").value, depth: depthNow()};
+                    quiz_in_video: +$("#quizN").value, depth: depthNow(), export_dir: $("#exportDir").value.trim(),
+                    read_appendix: $("#readAppendix").checked ? 1 : 0};
   const r = await fetch(`/api/jobs?name=${encodeURIComponent(pdfFile.name)}&settings=${encodeURIComponent(JSON.stringify(settings))}`,
                         {method: "POST", body: pdfFile});
   const j = await r.json();
@@ -221,27 +265,42 @@ $("#go").onclick = async () => {
 async function listJobs(){
   const jobs = allJobs = await (await fetch("/api/jobs")).json();
   $("#jobs").innerHTML = jobs.length ? jobs.map(j => `<a href="#" data-id="${j.id}" class="${j.id===current?"sel":""}">
-     <span>${esc(j.name)}</span><span class="row">${kindChip(j.depth)}<small>${j.error?"error":j.done?"done":j.running?"making…":j.queued?"waiting":"paused"}</small></span></a>`).join("")
+     <span>${esc(j.name)}</span><span class="row">${kindChip(j.depth)}<small>${j.error?(j.error.startsWith("Stopped: the paper's license")?"no license":"error"):j.done?"done":j.running?"making…":j.queued?"waiting":"paused"}</small></span></a>`).join("")
      : `<div class="hint">No jobs yet.</div>`;
   document.querySelectorAll("#jobs a").forEach(a => a.onclick = e => { e.preventDefault(); open(a.dataset.id); });
 }
 
 function open(id){ current = id; history.replaceState(null, "", "#job=" + id);
+  // fixed slots, each redrawn only when its own content changes: a finished script or set of
+  // figures is left alone while the narration and render run (no reloading, no scroll jumps)
+  shown = {};
+  $("#detail").innerHTML = `<div id="dHead"></div><div id="dResult"></div>
+    <div class="grid2"><div id="dScript"></div><div><div id="dFigs"></div><div id="dLog"></div></div></div>`;
   clearInterval(timer); poll(); timer = setInterval(poll, 1000); listJobs(); }
+let shown = {};
+function put(id, html){
+  if(shown[id] === html) return;
+  const el = $("#" + id), box = el.querySelector(".log");
+  const atEnd = !box || box.scrollTop + box.clientHeight >= box.scrollHeight - 4, top = box ? box.scrollTop : 0;
+  el.innerHTML = html; shown[id] = html;
+  const log = el.querySelector(".log");                // the log follows new lines unless you scrolled up
+  if(log) log.scrollTop = atEnd ? log.scrollHeight : top;
+}
 const esc = s => String(s ?? "").replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
 const fmt = s => s == null ? "" : s < 60 ? `${Math.round(s)}s` : `${Math.floor(s/60)}m ${Math.round(s%60)}s`;
 
 async function poll(){
   if(!current) return;
   if(!allJobs.length) await listJobs();          // the passes bar needs the other jobs of this paper
-  const j = await (await fetch(`/api/jobs/${current}`)).json();
+  const id = current, j = await (await fetch(`/api/jobs/${current}`)).json();
+  if(id !== current || !$("#dHead")) return;           // another job was opened meanwhile
   const st = Object.entries(j.stages);
   const overall = st.reduce((a,[,s]) => a + (s.status==="done"||s.status==="skipped" ? 1 : s.progress), 0) / st.length;
   const done = st.every(([,s]) => s.status==="done"||s.status==="skipped");
   if(done || j.error) { clearInterval(timer); listJobs(); }
   const meta = j.meta || {};
   let html = `<div class="title">${esc(meta.title || j.name)}</div>
-    <div class="sub">${esc((meta.authors||[]).slice(0,6).join(", "))} ${meta.venue?"· "+esc(meta.venue):""}</div>
+    <div class="sub">${esc((meta.authors||[]).join(", "))} ${meta.venue?"· "+esc(meta.venue):""}</div>
     <div class="overall"><div style="width:${(overall*100).toFixed(1)}%"></div></div>
     <div class="stats">${kindChip(j.settings.depth, j.settings.depth === "summary" ? j.settings.minutes : null)}
       <span><b>${Math.round(overall*100)}%</b> overall</span><span>model <b>${esc(j.settings.model)}</b></span>
@@ -254,7 +313,13 @@ async function poll(){
         <div><div class="name">${esc(s.label)}</div><div class="msg">${esc(s.msg)} ${el?"· "+fmt(el):""}</div></div>
         <div class="bar"><div style="width:${(s.status==="done"||s.status==="skipped"?100:s.progress*100).toFixed(1)}%"></div></div>
         <div class="pct">${s.status==="skipped"?"skip":Math.round((s.status==="done"?1:s.progress)*100)+"%"}</div></div>`; }).join("") + `</div>`;
-  if(j.error) html += `<div class="err">${esc(j.error)}</div><div class="links"><a href="#" onclick="rerun('${firstBad(j)}');return false">Retry from the failed stage</a></div>`;
+  if(j.license_stop) html += `<div class="err"><b>Stopped: this paper's license does not allow the video.</b><br>${esc(j.license_stop)}</div>
+    <div class="links" style="display:block"><label>If the authors or the publisher gave you permission, say who and when (this goes into the video's description):</label>
+    <input type="text" id="permNote" placeholder="e.g. Email from the first author, 6 October 2026" style="width:100%">
+    <a href="#" onclick="grant();return false">I have permission: continue</a></div>`;
+  else if(j.error) html += `<div class="err">${esc(j.error)}</div><div class="links"><a href="#" onclick="rerun('${firstBad(j)}');return false">Retry from the failed stage</a></div>`;
+  put("dHead", html);
+  html = "";
   if(done && j.outputs && j.outputs.video){
     const base = `/jobs/${j.id}/`;
     html += `<video controls src="${base}${j.outputs.video}"></video>
@@ -262,9 +327,17 @@ async function poll(){
       <a href="${base}${j.outputs.description}" target="_blank">YouTube description</a><a href="${base}${j.outputs.script}" target="_blank">Script</a>
       ${j.outputs.quiz ? `<a href="${base}${j.outputs.quiz}" target="_blank">Quiz for students</a>` : ""}
       <a href="${base}script.json" download>script.json</a>
-      <a href="#" onclick="reveal();return false">Show in Finder</a></div>`;
+      <a href="#" onclick="reveal();return false">Show in Finder</a></div>
+      <button class="btn small" style="margin-top:12px" onclick="revealYT('${j.id}', this)">📁 Open YouTube folder</button>`;
+    if(j.exported_to){
+      html += `<div class="hint">Also saved as its own folder <b>${esc(j.exported_to.split("/").pop())}</b>
+        in ${esc(j.exported_to.replace(/\/[^/]*$/, ""))}.</div>`;
+    } else if(done){
+      html += `<div class="links"><a href="#" onclick="doExport();return false">Save a renamed copy to a folder…</a></div>`;
+    }
   }
-  html += `<div class="grid2">`;
+  put("dResult", html);
+  html = "";
   if(j.script){
     const v = j.script.verification || {};
     html += `<div><h2>Script · numbers checked</h2><div class="stats">
@@ -273,12 +346,10 @@ async function poll(){
       j.script.chapters.map(c => `<h3>${esc(c.title)}</h3>` + c.sentences.map(s => `<p class="${s.status||""}">${esc(s.text)}
         ${s.status && s.status!=="ok" ? `<span class="badge">${s.status}${s.unverified&&s.unverified.length?": "+esc(s.unverified.join(", ")):""}</span>`:""}</p>`).join("")).join("") + `</div></div>`;
   }
-  html += `<div>`;
-  if(j.figs) html += `<h2>Figures & tables found (${j.figs.length})</h2><div class="figs">` +
-    j.figs.map(f => `<figure><img src="/jobs/${j.id}/${f.file}" loading="lazy"><figcaption>${esc(f.label)} · p.${f.page}</figcaption></figure>`).join("") + `</div>`;
-  if(j.log) html += `<h2 style="margin-top:16px">Log</h2><div class="log">${esc(j.log.join("\n"))}</div>`;
-  html += `</div></div>`;
-  $("#detail").innerHTML = html;
+  put("dScript", html);
+  put("dFigs", j.figs ? `<h2>Figures & tables found (${j.figs.length})</h2><div class="figs">` +
+    j.figs.map(f => `<figure><img src="/jobs/${j.id}/${f.file}" loading="lazy"><figcaption>${esc(f.label)} · p.${f.page}</figcaption></figure>`).join("") + `</div>` : "");
+  put("dLog", j.log ? `<h2 style="margin-top:16px">Log</h2><div class="log">${esc(j.log.join("\n"))}</div>` : "");
 }
 // the reading passes (and other kinds) of the same paper: open the ones that exist, make the rest
 function passBar(j){
@@ -293,7 +364,7 @@ function passBar(j){
   };
   return `<div class="passbar"><div class="sub">Reading passes for this paper</div>
     <div class="row">${["pass1","pass2","pass3"].map(btn).join("")}</div>
-    <div class="row">${["full","summary"].map(btn).join("")}</div>
+    <div class="row">${["study","auto","core","read","summary"].map(btn).join("")}</div>
     <div class="hint">New ones reuse this job's text, figures and notes, so only sections it skipped are read again.</div></div>`;
 }
 async function derive(d){
@@ -301,7 +372,20 @@ async function derive(d){
   if(r.error){ alert(r.error); return; }
   await listJobs(); open(r.id);
 }
+async function grant(){
+  const r = await (await fetch(`/api/jobs/${current}/permission`, {method: "POST", body: $("#permNote").value})).json();
+  if(r.error){ alert(r.error); return; }
+  open(current);
+}
 async function reveal(){ await fetch(`/api/jobs/${current}/reveal`, {method: "POST"}); }
+async function doExport(){
+  const dir = prompt("Save the finished video and its side files to which folder?", $("#exportDir").value.trim());
+  if(!dir) return;
+  const r = await (await fetch(`/api/jobs/${current}/export?dir=${encodeURIComponent(dir)}`, {method: "POST"})).json();
+  if(r.error) return alert(r.error);
+  $("#exportDir").value = dir;
+  alert(`Saved ${Object.keys(r.exported).length} files to ${dir}`); load();
+}
 async function pollMemory(){
   let m; try { m = await (await fetch("/api/memory")).json(); } catch(e){ return; }
   const used = Math.max(0, m.total_gb - m.available_gb), pl = m.ollama.reduce((a, x) => a + x.gb, 0);
@@ -322,6 +406,72 @@ $("#freeBtn").onclick = async () => {
 };
 function firstBad(j){ const e = Object.entries(j.stages).find(([,s]) => s.status==="error"); return e ? e[0] : "parse"; }
 async function rerun(stage){ await fetch(`/api/jobs/${current}/rerun?from=${stage}`, {method:"POST"}); open(current); }
+// ── Library: every finished video with its YouTube title, thumbnail and upload text ──────────
+let libItems = [];
+document.querySelectorAll("nav.views button").forEach(b => b.onclick = () => showView(b.dataset.v));
+function showView(v){
+  document.querySelectorAll("nav.views button").forEach(x => x.classList.toggle("on", x.dataset.v === v));
+  $("#make").hidden = v !== "make"; $("#library").hidden = v !== "library";
+  if(v === "library") loadLibrary();
+}
+const mmss = s => s ? `${Math.floor(s/60)}:${String(Math.round(s%60)).padStart(2,"0")}` : "";
+function licChip(it){
+  const y = it.youtube; if(!y) return "";
+  if(!y.allowed) return `<span class="lic no">license: do not publish</span>`;
+  if(y.permission) return `<span class="lic">with permission</span>`;
+  return /NC/.test(y.license||"") ? `<span class="lic nc">${esc(y.license)} · no ads</span>` : `<span class="lic">${esc(y.license||"open license")}</span>`;
+}
+async function loadLibrary(){
+  libItems = await (await fetch("/api/library")).json();
+  $("#library").innerHTML = libItems.length ? `<h2>Library · ${libItems.length} video${libItems.length>1?"s":""}</h2><div class="libgrid">` +
+    libItems.map((it, i) => `<div class="vcard" onclick="openVideo(${i})">
+      <div class="thumb">${it.thumbnail ? `<img src="${it.thumbnail}?v=${Math.round(it.created||0)}" loading="lazy">` : "no thumbnail yet"}
+        ${it.seconds ? `<span class="len">${mmss(it.seconds)}</span>` : ""}</div>
+      <div class="meta"><div class="t">${esc(it.youtube ? it.youtube.title : it.paper)}</div>
+        <div class="s">${kindChip(it.depth)}<span>${new Date((it.created||0)*1000).toLocaleDateString()}</span>${licChip(it)}</div>
+        <button class="copy" style="margin-top:10px" onclick="event.stopPropagation(); revealYT('${it.id}', this)">📁 Open YouTube folder</button></div></div>`).join("") + `</div>`
+    : `<div class="empty">No finished videos yet. Finished videos appear here with their thumbnail and YouTube text.</div>`;
+}
+function openVideo(i){
+  const it = libItems[i], y = it.youtube;
+  const copyBtn = (id) => `<button class="copy" onclick="copyText('${id}', this)">Copy</button>`;
+  $("#library").innerHTML = `<div class="row" style="margin-bottom:16px"><button class="copy" onclick="loadLibrary()">← Library</button></div>
+    <div class="vdetail"><div>
+      <video controls preload="metadata" src="${it.video}" ${it.thumbnail ? `poster="${it.thumbnail}"` : ""}></video>
+      <div class="title" style="margin-top:14px">${esc(y ? y.title : it.paper)}</div>
+      <div class="sub">${esc((it.authors||[]).join(", "))}</div>
+      <button class="btn small" style="margin-top:14px" onclick="revealYT('${it.id}', this)">📁 Open YouTube folder</button>
+      <div class="hint">The video under its YouTube title, its thumbnail, and a text file with the title, description and tags, ready to upload.</div>
+      <div class="links" style="margin-top:12px">
+        <a href="${it.video}" download>Download video</a><a href="${it.captions}" download>Captions (.srt)</a>
+        ${it.thumbnail ? `<a href="${it.thumbnail}" download>Thumbnail</a>` : ""}
+        <a href="#" onclick="makeYT('${it.id}', ${i});return false">${y ? "Remake YouTube files" : "Make YouTube files"}</a>
+        <a href="#" onclick="showView('make');open('${it.id}');return false">Open the job</a></div>
+    </div><div>
+      ${y ? `${y.allowed ? "" : `<div class="err">The paper's license does not allow publishing this video, and no permission is recorded. Do not publish it.</div>`}
+      <div class="field"><div class="lab">YouTube title (${y.title.length}/100) ${copyBtn("ytTitle")}</div><div class="box" id="ytTitle">${esc(y.title)}</div></div>
+      <div class="field"><div class="lab">Description ${copyBtn("ytDesc")}</div><pre id="ytDesc">${esc(y.description)}</pre></div>
+      <div class="field"><div class="lab">Tags ${copyBtn("ytTags")}</div><div class="box" id="ytTags">${esc((y.tags||[]).join(", "))}</div></div>
+      <div class="field"><div class="lab">Thumbnail</div>${it.thumbnail ? `<img src="${it.thumbnail}?t=${Date.now()}" style="width:100%;border-radius:10px">` : ""}</div>
+      <div class="field"><div class="lab">In YouTube Studio</div><div class="box">Subtitles: upload the captions file · Audience: not made for kids · Category: Education · Altered or synthetic content: No (your own cloned voice is exempt) · Monetisation: ${esc(/NC/.test(y.license||"") ? "no ads (non-commercial license)" : y.allowed ? "allowed" : "do not publish")}</div></div>`
+      : `<div class="empty">This video was made before YouTube files existed. Click "Make YouTube files".</div>`}
+    </div></div>`;
+}
+function copyText(id, btn){ navigator.clipboard.writeText($("#" + id).innerText).then(() => { btn.textContent = "Copied"; setTimeout(() => btn.textContent = "Copy", 1500); }); }
+async function makeYT(id, i){
+  const r = await (await fetch(`/api/jobs/${id}/youtube`, {method: "POST"})).json();
+  if(r.error){ alert(r.error); return; }
+  libItems = await (await fetch("/api/library")).json();
+  openVideo(libItems.findIndex(x => x.id === id));
+}
+async function revealYT(id, btn){
+  const label = btn ? btn.textContent : "";
+  if(btn){ btn.disabled = true; btn.textContent = "Opening..."; }
+  const r = await (await fetch(`/api/jobs/${id}/reveal-youtube`, {method: "POST"})).json();
+  if(btn){ btn.disabled = false; btn.textContent = label; }
+  if(r.error) alert(r.error);
+}
+
 loadSetup(); listJobs(); pollMemory(); setInterval(pollMemory, 5000);
 if(location.hash.startsWith("#job=")) open(location.hash.slice(5));
 </script>

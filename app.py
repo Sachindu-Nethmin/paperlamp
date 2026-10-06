@@ -67,6 +67,7 @@ RUNNER = Runner()
 def config():
     c = json.loads(CONFIG.read_text()) if CONFIG.exists() else {}
     c.setdefault("model", llm.DEFAULT_MODEL)
+    c["voice"] = pipeline.default_voice(c)      # the cloned voice whenever one is set up
     return c
 
 
@@ -133,7 +134,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_file(ROOT / "ui/index.html")
         if p == "/api/setup":
             models = llm.available()
-            return self.send_json(dict(models=models, default_model=config()["model"], tools=tools_status(),
+            return self.send_json(dict(models=models, default_model=llm.best_model(models, config()["model"]),
+                                       tools=tools_status(),
                                        say_voices=tts.say_voices(), config=config()))
         if p == "/api/jobs":
             jobs = pipeline.list_jobs()
@@ -159,6 +161,8 @@ class Handler(BaseHTTPRequestHandler):
                                                  for s in c["sentences"]]) for c in sc["chapters"]])
             return self.send_json(dict(job.state, running=RUNNER.current == m.group(1),
                                        queued=RUNNER.position(m.group(1)), **extra))
+        if p == "/api/library":
+            return self.send_json(pipeline.library())
         if p == "/api/memory":
             return self.send_json(dict(memory.status(), current=RUNNER.current, queue=list(RUNNER.queue)))
         if m := re.match(r"^/jobs/([\w-]+)/(.+)$", p):
@@ -187,7 +191,7 @@ class Handler(BaseHTTPRequestHandler):
             depth = q.get("depth", [""])[0]
             if not src.state:
                 return self.send_json({"error": "no such job"}, 404)
-            if depth not in ("summary", "full", "pass1", "pass2", "pass3"):
+            if depth not in ("summary", "auto", "core", "read", "study", "full", "pass1", "pass2", "pass3"):
                 return self.send_json({"error": "unknown kind of video"}, 400)
             if not (src.dir / "notes.json").exists():
                 return self.send_json({"error": "this job has no notes yet"}, 409)
@@ -207,6 +211,47 @@ class Handler(BaseHTTPRequestHandler):
             target = job.dir / "out" / "video.mp4"
             subprocess.run(["open", "-R", str(target if target.exists() else job.dir)])
             return self.send_json({"ok": True})
+        if m := re.match(r"^/api/jobs/([\w-]+)/export$", p):    # copy a finished video out again, renamed
+            job = pipeline.Job(m.group(1))
+            if not job.state:
+                return self.send_json({"error": "no such job"}, 404)
+            if not (job.dir / "out" / "video.mp4").exists():
+                return self.send_json({"error": "this video has not been rendered yet"}, 409)
+            if folder := q.get("dir", [""])[0]:
+                job.state["settings"]["export_dir"] = folder
+                job.save(force=True)
+            return self.send_json({"ok": True, "exported": job.export()})
+        if m := re.match(r"^/api/jobs/([\w-]+)/youtube$", p):      # (re)make the YouTube files of a finished video
+            job = pipeline.Job(m.group(1))
+            if not job.state or not (job.dir / "out" / "video.mp4").exists():
+                return self.send_json({"error": "this job has no finished video"}, 404)
+            if RUNNER.current == m.group(1):
+                return self.send_json({"error": "this video is still being made"}, 409)
+            info = job.package_youtube(rebuild_docs=True)
+            job.export()
+            return self.send_json(dict(info, exported_to=job.state.get("exported_to")))
+        if m := re.match(r"^/api/jobs/([\w-]+)/reveal-youtube$", p):  # open its YouTube folder in Finder
+            job = pipeline.Job(m.group(1))
+            if not job.state or not (job.dir / "out" / "video.mp4").exists():
+                return self.send_json({"error": "this job has no finished video"}, 404)
+            folder = youtube_folder(job)
+            if not folder:
+                return self.send_json({"error": "could not make the YouTube folder; see the job's log"}, 500)
+            subprocess.run(["open", str(folder)])
+            return self.send_json({"ok": True, "opened": str(folder)})
+        if m := re.match(r"^/api/jobs/([\w-]+)/permission$", p):   # body: who gave permission, and when
+            job = pipeline.Job(m.group(1))
+            note = self.body().decode("utf-8", "replace").strip()
+            if not job.state:
+                return self.send_json({"error": "no such job"}, 404)
+            if len(note) < 10:
+                return self.send_json({"error": "say who gave permission and when (it goes into the description)"}, 400)
+            job.state["settings"]["permission"] = note[:500]
+            job.state["error"] = None
+            job.state.pop("license_stop", None)
+            job.save(force=True)
+            job.log(f"continuing with permission: {note[:200]}")
+            return self.send_json({"ok": True, "queued": RUNNER.add(m.group(1))})
         if m := re.match(r"^/api/jobs/([\w-]+)/(start|import|script|rerun)$", p):
             job = pipeline.Job(m.group(1))
             if not job.state:
@@ -230,6 +275,24 @@ class Handler(BaseHTTPRequestHandler):
                 job.reset_from(q.get("from", ["verify"])[0])
             return self.send_json({"ok": True, "queued": RUNNER.add(m.group(1))})
         self.send_json({"error": "not found"}, 404)
+
+
+def youtube_folder(job):
+    """The folder to upload from: the video under its YouTube title, its thumbnail, and a text
+    file with the title, description and tags. Made on first use for a video that was never
+    exported (into the export folder from Settings, or ~/Movies/PaperLamp)."""
+    ex = job.state.get("exported_to")
+    if not (ex and (pathlib.Path(ex) / "YouTube").exists()):
+        if not (job.dir / "out" / "youtube" / "youtube.json").exists():
+            job.package_youtube(rebuild_docs=True)
+        s = job.state["settings"]
+        if not s.get("export_dir"):
+            s["export_dir"] = config().get("export_dir") or str(pathlib.Path.home() / "Movies" / "PaperLamp")
+            job.save(force=True)
+        job.export()
+        ex = job.state.get("exported_to")
+    folder = pathlib.Path(ex) / "YouTube" if ex else None
+    return folder if folder and folder.exists() else None
 
 
 def shutdown(*_):
