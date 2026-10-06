@@ -3,7 +3,7 @@
 Uses poppler's command-line tools (pdfinfo, pdftotext, pdftoppm), which ship with
 `brew install poppler`. Coordinates are PDF points, origin top-left.
 """
-import html, json, pathlib, re, subprocess, unicodedata
+import html, json, pathlib, re, subprocess, unicodedata, urllib.request
 
 import numpy as np
 from PIL import Image
@@ -557,13 +557,148 @@ def trim(pdf, page, box, cache, pad=4):
 
 
 def license_hint(text):
-    """Best-effort: does the paper say it is openly licensed? (offline, text only)"""
+    """Which Creative Commons license the paper says it is under, if any (offline, text
+    only). Returns the short id used by LICENSE_NOTICE, or "" when the paper says nothing
+    that grants reuse — which is the common case for arXiv's default license and for
+    papers published by a society, and needs permission before a video is published."""
     t = text[:20000]
-    if re.search(r"creativecommons\.org/licenses/by|CC[- ]BY(?![- ]?N[CD])|Creative Commons Attribution(?! ?-? ?Non)", t):
-        return "CC BY"
-    if re.search(r"CC[- ]BY[- ]N[CD]|NonCommercial|NoDerivatives", t):
-        return "CC BY-NC/ND"
+    if re.search(r"creativecommons\.org/publicdomain/zero|\bCC0\b", t, re.I):
+        return "CC0 1.0"
+    m = re.search(r"creativecommons\.org/licenses/([a-z\-]+)/([\d.]+)", t, re.I)
+    if m:
+        return f"CC {m.group(1).upper()} {m.group(2)}"
+    if re.search(r"CC[- ]BY[- ]NC[- ]SA|Creative Commons Attribution[- ]NonCommercial[- ]ShareAlike", t, re.I):
+        return "CC BY-NC-SA 4.0"
+    if re.search(r"CC[- ]BY[- ]NC[- ]ND|[- ]NonCommercial[- ]NoDerivatives", t, re.I):
+        return "CC BY-NC-ND 4.0"
+    if re.search(r"CC[- ]BY[- ]NC\b|[- ]NonCommercial\b", t, re.I):
+        return "CC BY-NC 4.0"
+    if re.search(r"CC[- ]BY[- ]ND\b|[- ]NoDerivatives\b", t, re.I):
+        return "CC BY-ND 4.0"
+    if re.search(r"CC[- ]BY(?![- ]?N[CD])|Creative Commons Attribution(?! ?-? ?Non)", t):
+        return "CC BY 4.0"
     return ""
+
+
+def arxiv_id(text):
+    """The paper's arXiv number, so the description can link the paper. "" if it has none."""
+    m = re.search(r"arxiv(?:\.org)?(?:/abs|/pdf)?[:/\s]*(\d{4}\.\d{4,5})(?:v\d+)?", text[:20000], re.I)
+    return m.group(1) if m else ""
+
+
+# What each license means for a video that shows the paper's own pages, and what the
+# description then has to say. Attribution is the whole point of the CC licenses: the
+# video is a derivative work, so it must name the paper, name the license, link it and
+# say that it was changed.
+LICENSE_NOTICE = {
+    "CC BY 4.0": dict(
+        url="https://creativecommons.org/licenses/by/4.0/",
+        may="You may publish this video and earn money from it, with or without ads.",
+        must="Credit the paper, name this license and link it, and say that you changed the paper."),
+    "CC BY-NC 4.0": dict(
+        url="https://creativecommons.org/licenses/by-nc/4.0/",
+        may="You may publish this video, but not commercially: no monetisation and no advertising.",
+        must="Credit the paper, name this license and link it, and say that you changed the paper."),
+    "CC BY-SA 4.0": dict(
+        url="https://creativecommons.org/licenses/by-sa/4.0/",
+        may="You may publish and monetise this video, but it must carry the same license.",
+        must="Credit the paper, name this license and link it, say that you changed the paper, "
+             "and release the video under this same license."),
+    "CC BY-NC-SA 4.0": dict(
+        url="https://creativecommons.org/licenses/by-nc-sa/4.0/",
+        may="You may publish this video, but not commercially, and it must carry the same license.",
+        must="Credit the paper, name this license and link it, say that you changed the paper, "
+             "and release the video under this same license. Ask the authors first."),
+    "CC BY-ND 4.0": dict(
+        url="https://creativecommons.org/licenses/by-nd/4.0/",
+        may="You may publish an unadapted video, but these videos add highlighting and narration, "
+            "so this one is an adaptation and needs the authors' permission.",
+        must="Credit the paper, name this license and link it, and say that you changed the paper."),
+    "CC BY-NC-ND 4.0": dict(
+        url="https://creativecommons.org/licenses/by-nc-nd/4.0/",
+        may="You may not publish this video commercially, and as an adaptation it needs the "
+            "authors' permission.",
+        must="Credit the paper, name this license and link it, and say that you changed the paper."),
+}
+
+
+CC_IDS = {"by": "CC BY", "by-nc": "CC BY-NC", "by-nd": "CC BY-ND", "by-sa": "CC BY-SA",
+          "by-nc-sa": "CC BY-NC-SA", "by-nc-nd": "CC BY-NC-ND"}
+
+
+def arxiv_license(aid):
+    """The license arXiv says this paper is under, e.g. "CC BY 4.0". arXiv papers almost never
+    print their license inside the PDF, so reading the paper's own text alone would wrongly
+    report no license for most of them. Returns "" if there is no arXiv number or arXiv lists no
+    open license, and None if the page could not be reached (so the answer is not kept). Never guesses."""
+    if not aid:
+        return ""
+    try:
+        req = urllib.request.Request(f"https://arxiv.org/abs/{aid}",
+                                     headers={"User-Agent": "paperlamp/1.0 (license check)"})
+        page = urllib.request.urlopen(req, timeout=8).read().decode("utf-8", "replace")
+    except Exception:
+        return None
+    m = re.search(r'abs-license"?>\s*<a href="([^"]+)"', page, re.I)
+    if not m:
+        return ""
+    u = m.group(1).lower()
+    if "creativecommons.org/publicdomain/zero" in u:
+        return "CC0 1.0"
+    if "creativecommons.org/licenses/" not in u:
+        return ""                              # arXiv's own default license grants no reuse rights
+    parts = u.split("/licenses/", 1)[1].split("/")
+    if len(parts) >= 2 and parts[0] in CC_IDS:
+        return f"{CC_IDS[parts[0]]} {parts[1]}"
+    return ""
+
+
+def resolve_license(text, job_dir, aid=""):
+    """The license of a paper: what the paper's own text says, else what arXiv says about it.
+    The arXiv answer is cached in the job folder, so the page is fetched at most once per
+    paper and a finished job never changes its answer."""
+    found = license_hint(text)
+    if found or not aid:
+        return found
+    cache = pathlib.Path(job_dir) / "arxiv-license.txt"
+    kept = cache.read_text(encoding="utf-8").strip() if cache.exists() else ""
+    if kept:                                       # "none": arXiv answered, with no open license
+        return "" if kept == "none" else kept
+    found = arxiv_license(aid)
+    if found is None:                              # arXiv not reached: ask again next time
+        return ""
+    cache.write_text((found or "none") + "\n", encoding="utf-8")
+    return found
+
+
+# licenses that let anyone publish an adapted copy of the paper; a video that adds highlighting,
+# camera movement and narration to its pages is one (NC ones: only without monetisation)
+ADAPT_OK = ("CC BY ", "CC BY-SA ", "CC BY-NC ", "CC BY-NC-SA ", "CC0 ")
+
+
+def video_allowed(lic):
+    """Whether this license lets anyone make and publish this kind of video. NoDerivatives
+    licenses, arXiv's default license and no stated license do not."""
+    return (re.sub(r"\s*\(.*?\)\s*", " ", lic or "").strip() + " ").startswith(ADAPT_OK)
+
+
+def license_block(lic, arxiv=""):
+    """The LICENSE section of the YouTube description: what the license allows, and what
+    the description has to carry. Nothing known gets the safe answer, but never a false one:
+    "we could not confirm" is honest, "the paper has no license" is an assertion we cannot make."""
+    changed = ("This video shows pages and figures from the paper with highlighting, camera movement "
+               "and narration added, so it is an adaptation. The authors have not reviewed or endorsed it.")
+    n = LICENSE_NOTICE.get((lic or "").strip())
+    if not n:
+        if arxiv:
+            return (f"Check the license on the paper's arXiv page (https://arxiv.org/abs/{arxiv}) before "
+                    "publishing. PaperLamp could not confirm a license for this paper, so it will not claim "
+                    "one. If the arXiv page shows a Creative Commons license, credit the paper, name that "
+                    "license, link it and say that you changed the paper. " + changed)
+        return ("This paper does not state an open license, so it grants no right to reuse its pages. "
+                "Ask the authors or the publisher for permission before publishing. "
+                "(arXiv's default license is not an open license.) " + changed)
+    return "\n".join((f"Licensed under {lic}: {n['url']}", n["may"], n["must"], changed))
 
 
 def extract(pdf, job_dir, progress=lambda stage, i, n, msg="": None):
@@ -578,11 +713,15 @@ def extract(pdf, job_dir, progress=lambda stage, i, n, msg="": None):
     progress("parse", 1, 3, "finding sections")
     secs = sections(pages)
     progress("parse", 2, 3, f"{len(secs)} sections")
+    aid = arxiv_id(full)
+    progress("parse", 3, 3, "checking the license")
+    lic = resolve_license(full, job, aid)
     doc = dict(pages=meta["pages"], pdf_title=meta["title"], sections=[dict(s, words=len(s["text"].split()))
-               for s in secs], license=license_hint(full), first_page=pages[0][:4000] if pages else "")
+               for s in secs], license=lic, arxiv=aid,
+               first_page=pages[0][:4000] if pages else "")
     (job / "doc.json").write_text(json.dumps(doc, indent=1), encoding="utf-8")
     (job / "chunks.json").write_text(json.dumps(chunks([s for s in secs if not s["appendix"]]), indent=1))
-    progress("parse", 3, 3, f"{meta['pages']} pages, {len(full.split()):,} words")
+    progress("parse", 3, 3, f"{meta['pages']} pages, {len(full.split()):,} words, {lic or 'no license found'}")
     figs = find_figures(pdf, cache, lambda i, n: progress("figures", i, n, f"page {i}/{n}"))
     (job / "figs.json").write_text(json.dumps(figs, indent=1), encoding="utf-8")
     progress("figures", 1, 1, f"{len(figs)} figures/tables")
