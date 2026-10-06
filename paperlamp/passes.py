@@ -21,7 +21,7 @@ from collections import Counter
 
 from . import llm
 from .analyze import facts_text, is_limitation_section
-from .script import SKIP, fig_label, near_dup, paper_line
+from .script import SKIP, author_sentences, fig_label, near_dup, paper_line
 
 WORDS = "zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen " \
         "seventeen eighteen nineteen twenty".split()
@@ -79,9 +79,8 @@ def chapter(key, title, sentences):
 
 def intro_chapter(meta, what):
     t, authors = meta.get("title", ""), meta.get("authors") or []
-    who = listing(authors[:3]) + (" and colleagues" if len(authors) > 3 else "")
     venue, year = meta.get("venue", ""), meta.get("year", "")
-    s = [f"This is {what} through \"{t}\"" + (f", by {who}." if who else ".")]
+    s = [f"This is {what} through \"{t}\"."] + author_sentences(authors)
     if "preprint" in venue.lower():
         s.append(f"It is an arXiv preprint{f' from {year}' if year else ''}, so it has not been peer reviewed yet.")
     elif venue:

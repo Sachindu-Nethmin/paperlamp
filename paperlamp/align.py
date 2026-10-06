@@ -5,10 +5,12 @@ For every sentence we pick
   highlight  - the exact lines to mark with a highlighter (1-3 lines)
   focus      - the region the camera frames (the paragraph, or a whole figure)
 
-A sentence that names "Figure N" / "Table N" goes to that figure (caption
-highlighted, figure outlined). Otherwise lines are scored by shared numbers
+A sentence that names "Figure N" / "Table N" goes to that figure (its whole
+caption highlighted, figure outlined). Otherwise lines are scored by shared numbers
 (weighted most), rare words and phrases, searching the sentence's own section
-first. Numbers and names come straight from the text, so this needs no model.
+first; a match that rests only on common words is not highlighted, since marking
+the wrong sentence is worse than marking none. Numbers and names come straight
+from the text, so this needs no model.
 """
 import math, re
 from collections import Counter
@@ -23,6 +25,10 @@ eight nine ten paper authors author study show shows shown result results use us
 REF = re.compile(r"\b(Figure|Fig\.|Table)\s+(\d+|[A-Z]\d*)\b", re.I)
 
 
+# a highlight must share at least this many "rarest words" worth of weight with the
+# narration (log of the line count is the rarest word's weight); measured on SWE-bench:
+# every wrong highlight scored 1.5 to 2.0, every right one 2.3 or more
+WEAK = 2.2
 CITE = re.compile(r"\[\s*\d+(?:\s*[,\u2013-]\s*\d+)*\s*\]")    # [10], [29, 38], [4-6]: citations, not data
 
 
@@ -149,6 +155,7 @@ def sentence_span(idx, i, qset, idf=None, reach=6, max_lines=8):
     best = max(sents, key=lambda st: (score(st), any(line == i for line, _ in st)), default=None)
     if not best or score(best) == 0:
         return None
+    best = _complete(idx, best, max_lines)
     by_line = {}
     for line, w in best:
         by_line.setdefault(line, []).append(w)
@@ -158,6 +165,113 @@ def sentence_span(idx, i, qset, idf=None, reach=6, max_lines=8):
         lines = lines[max(0, c - max_lines // 2):][:max_lines]
     return [[min(w[0] for w in by_line[ln]), min(w[1] for w in by_line[ln]),
              max(w[2] for w in by_line[ln]), max(w[3] for w in by_line[ln])] for ln in lines]
+
+
+def _complete(idx, sent, max_lines):
+    """The search window can cut the chosen sentence at its top or bottom edge: read on
+    (up to its full stop, or back to the previous one) so the whole sentence is marked."""
+    sent = list(sent)
+    j = sent[-1][0]
+    while not _ends_sentence(sent[-1][1][4]) and len({ln for ln, _ in sent}) < max_lines:
+        j = _next_line(idx, j, 1)
+        if j is None or _is_heading(idx[j]):
+            break
+        for w in idx[j]["words"]:
+            sent.append((j, w))
+            if _ends_sentence(w[4]):
+                break
+    j, k = sent[0][0], None
+    while len({ln for ln, _ in sent}) < max_lines:
+        words = idx[j]["words"]
+        if k is None:                                     # where the sentence begins on its first line
+            k = next((n for n, w in enumerate(words) if w == sent[0][1]), 0)
+        ends = [n for n in range(k) if _ends_sentence(words[n][4])]
+        sent = [(j, w) for w in words[(ends[-1] + 1 if ends else 0):k]] + sent
+        if ends:
+            break
+        j = _next_line(idx, j, -1)
+        if j is None or _is_heading(idx[j]):
+            break
+        k = len(idx[j]["words"])
+    return sent
+
+
+def caption_span(idx, f, max_lines=8):
+    """Boxes for a figure's whole caption, one per line, from "Figure N:" to its end.
+    Only words inside the caption's column count, so a caption beside body text or
+    beside another figure's caption is not merged with its neighbour."""
+    c = f.get("caption_box")
+    if not c:
+        return []
+    cap = squash(f.get("caption") or "")
+    x0, x1 = c[0] - 2, c[2] + 2
+    i = next((k for k, ln in enumerate(idx) if ln["page"] == f["page"] and ln.get("words")
+              and abs(ln["box"][1] - c[1]) < 3 and ln["box"][0] < x1 and ln["box"][2] > x0), None)
+    if i is None:
+        return [c]
+    boxes, read = [], ""
+    while i is not None and len(boxes) < max_lines:
+        ws = [w for w in idx[i]["words"] if w[0] >= x0 and w[2] <= x1]
+        text = squash(" ".join(w[4] for w in ws))
+        if not ws or (boxes and cap and text not in cap):  # past the caption's last line
+            break
+        boxes.append([min(w[0] for w in ws), min(w[1] for w in ws), max(w[2] for w in ws), max(w[3] for w in ws)])
+        read += text
+        if cap and len(read) >= len(cap) - 2:
+            break
+        i = _next_line(idx, i, 1)
+    return boxes or [c]
+
+
+def match_weight(idx, page, boxes, qset, idf):
+    """How much rare vocabulary (numbers weighted most) the highlighted words share
+    with the narration."""
+    toks = set()
+    for ln in idx:
+        if ln["page"] != page:
+            continue
+        if not ln.get("words"):                           # older index: whole lines only
+            if any(b[1] - 1 <= (ln["box"][1] + ln["box"][3]) / 2 <= b[3] + 1 for b in boxes):
+                toks.update(ln.get("toks") or tokens(ln["text"]))
+            continue
+        for w in ln["words"]:
+            cx, cy = (w[0] + w[2]) / 2, (w[1] + w[3]) / 2
+            if any(b[0] - 1 <= cx <= b[2] + 1 and b[1] - 1 <= cy <= b[3] + 1 for b in boxes):
+                toks.update(tokens(w[4]))
+    return sum((3.0 if t[0].isdigit() else 1.0) * idf.get(t, 0) for t in qset & toks)
+
+
+def author_boxes(idx, names, page=1):
+    """Where each author's name is printed on the title page: {name: box}. Only the lines
+    above the abstract are searched, and words are compared letters-only, so footnote
+    marks glued to a name ("Jimenez*1,2") still match. A name whose first name isn't
+    printed (initials only) is marked by its last name; a line without word positions
+    (older index) or with letter-spaced small caps is marked whole if it holds the name."""
+    lines = [ln for ln in idx if ln["page"] == page]
+    stop = next((ln["box"][1] for ln in lines if squash(ln["text"]).startswith("abstract")), 792 * 0.45)
+    lines = [ln for ln in lines if ln["box"][3] <= stop]
+    out = {}
+    for name in names:
+        parts = [squash(p) for p in name.split() if squash(p)]
+        if not parts:
+            continue
+        first, last = parts[0], parts[-1]
+        is_ = lambda t, part: t == part or (t.startswith(part) and t[len(part):].isdigit())  # "jimenez12"
+        whole = "".join(parts)
+        for ln in lines:
+            sq = [squash(w[4]) for w in ln.get("words") or []]
+            k = next((k for k, t in enumerate(sq) if is_(t, last)), None)
+            if k is None:
+                if whole in squash(ln["text"]):
+                    out[name] = list(ln["box"])
+                    break
+                continue
+            j = next((j for j in range(max(0, k - len(parts) + 1), k)
+                      if is_(sq[j], first) or (len(sq[j]) == 1 and sq[j] == first[:1])), k)
+            ws = ln["words"][j:k + 1]
+            out[name] = [min(w[0] for w in ws), min(w[1] for w in ws), max(w[2] for w in ws), max(w[3] for w in ws)]
+            break
+    return out
 
 
 def _anchor(idx, anchor, refs=()):
@@ -217,6 +331,9 @@ def run(script, idx, figures, progress):
         home = _section_pages(idx, ch["title"])
         for s in ch["sentences"]:
             progress(k, len(all_s), "matching sentences to the page"); k += 1
+            if s.get("exact") and s.get("align"):          # a whole-paper sentence: placed when it was read
+                prev = s["align"]
+                continue
             if s.get("hold"):                             # a framing sentence: stay where we are
                 s["align"] = dict(prev, highlight=[])
                 continue
@@ -234,16 +351,15 @@ def run(script, idx, figures, progress):
                 num = label.split()[-1]
                 cap = [ln for ln in idx if ln["page"] == f["page"] and
                        re.match(rf"^(figure|fig\.|table)\s+{re.escape(num)}\b", ln["text"].lower())]
-                # outline and frame the figure together with its caption line, so the
+                # outline and frame the figure together with its whole caption, so the
                 # outline goes round the highlighted caption instead of through it
-                # (the figure finder records the caption's own box; a caption beside wrapped
-                # text shares its text line, so the index alone can't isolate it)
-                c = f.get("caption_box") or (cap[0]["box"] if cap else None)
+                # (the figure finder records the caption's first line; a caption beside
+                # wrapped text shares its text line, so its column is read word by word)
+                hl = caption_span(idx, f) if f.get("caption_box") else ([cap[0]["box"]] if cap else [])
                 box = f["box"]
-                if c:
+                for c in hl:
                     box = [min(box[0], c[0]), min(box[1], c[1]), max(box[2], c[2]), max(box[3], c[3])]
-                s["align"] = dict(page=f["page"], focus=box, outline=box, figure=f["label"],
-                                  highlight=[c] if c else [])
+                s["align"] = dict(page=f["page"], focus=box, outline=box, figure=f["label"], highlight=hl)
                 prev = s["align"]
                 continue
             q = tokens(s["text"])
@@ -276,6 +392,8 @@ def run(script, idx, figures, progress):
                                     and idx[j]["page"] == ln0["page"]
                                     and sum(idf.get(t, 0) for t in qset.intersection(idx[j]["toks"])) >= 0.35 * best]
                 hl = [idx[j]["box"] for j in sorted(lines)]
+            if match_weight(idx, ln0["page"], hl, qset, idf) < WEAK * math.log(n_lines):
+                s["align"] = dict(prev, highlight=[]); continue    # only common words in common
             focus = _paragraph(idx, best_i)
             focus = [min(focus[0], *(b[0] for b in hl)), min(focus[1], *(b[1] for b in hl)),
                      max(focus[2], *(b[2] for b in hl)), max(focus[3], *(b[3] for b in hl))]

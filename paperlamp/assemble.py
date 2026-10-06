@@ -129,6 +129,12 @@ def captions(rows, out_dir):
     return len(cues)
 
 
+def venue_year(meta, sep=" "):
+    """ "ICLR 2024", not "ICLR 2024 2024" when the venue already carries the year."""
+    venue, year = meta.get("venue", ""), str(meta.get("year", "") or "")
+    return sep.join(x for x in (venue, "" if year and year in venue else year) if x)
+
+
 def build(job, sentences, durs, meta, pages, progress, voice_note=""):
     job = pathlib.Path(job)
     out, work = job / "out", job / "build"
@@ -138,16 +144,15 @@ def build(job, sentences, durs, meta, pages, progress, voice_note=""):
     progress(0, 4, "audio")
     build_audio(rows, total, job / "audio", out / "narration.wav")
     # one segment per sentence
-    authors = ", ".join(meta.get("authors", [])[:6]) + (" et al." if len(meta.get("authors", [])) > 6 else "")
+    authors = ", ".join(meta.get("authors", []))           # every author; the card wraps long lists
     jobs, prev = [], None
     for i, r in enumerate(rows):
         card_spec = None
         if r["chapter_key"] == "outro":
             card_spec = dict(lines=[("SOURCE", 26, render.ACCENT, True), (meta.get("title", ""), 52, (245, 247, 250), True),
                                     (authors, 30, (143, 160, 188), False),
-                                    (" · ".join(x for x in (meta.get("venue", ""), meta.get("year", "")) if x), 30,
-                                     (143, 160, 188), False)],
-                             sub="Pages shown are from the paper. " + voice_note)
+                                    (venue_year(meta, " · "), 30, (143, 160, 188), False)],
+                             sub=" ".join(x for x in ("Pages shown are from the paper.", voice_note) if x))
         elif r.get("card"):
             card_spec = dict(quiz=r["card"])
         hud = dict(chapter=r["chapter"], pages=pages)
