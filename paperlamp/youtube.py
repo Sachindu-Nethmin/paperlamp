@@ -83,7 +83,8 @@ def _wrap(d, text, ft, width, lines):
     if len(rows) > lines:
         rows = rows[:lines]
         while rows[-1] and d.textlength(rows[-1] + "...", font=ft) > width:
-            rows[-1] = rows[-1].rsplit(" ", 1)[0]
+            cut = rows[-1].rsplit(" ", 1)               # drop the last word; a lone word too wide
+            rows[-1] = cut[0] if len(cut) > 1 else rows[-1][:-1]   # loses letters instead
         rows[-1] += "..."
     return rows
 

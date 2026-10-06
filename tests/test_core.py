@@ -554,6 +554,17 @@ class YouTubeFiles(unittest.TestCase):
         self.assertLessEqual(len(t), 100)
         self.assertTrue(t.startswith("Agentic | "))           # shortened to the part before the colon
 
+    def test_wrap_ends_when_a_lone_word_is_too_wide(self):
+        from PIL import Image, ImageDraw
+        from paperlamp import youtube
+        d = ImageDraw.Draw(Image.new("RGB", (10, 10)))
+        title = "Why Are AI Agent–Involved Pull Requests (Fix-Related) Remain Unmerged? An Empirical Study"
+        for size in range(132, 50, -6):                       # the thumbnail's sizes; 114 hung the app
+            ft = render.font(size, True)
+            rows = youtube._wrap(d, title, ft, 604, 2)
+            self.assertLessEqual(len(rows), 2)
+            self.assertLessEqual(d.textlength(rows[-1], font=ft), 604, size)
+
     def test_tags_and_upload_text(self):
         from paperlamp import youtube
         tags = youtube.tags(self.META, "study")
