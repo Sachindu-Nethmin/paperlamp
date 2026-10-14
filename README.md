@@ -53,7 +53,7 @@ Every video and number in the demo comes from a real run on a 16 GB MacBook.
 
 | Status | What |
 |---|---|
-| Fully working, used on real papers | The 10-stage pipeline, the number check, the license gate, YouTube packaging, the Library, the Mac app and memory manager, macOS and cloned voices. Finished videos of these kinds: **Auto** (a 52-page paper gave a 13:49 video; a 5-page paper gave 5:50 in 16 minutes end to end), **Target length**, **Every section**, **Reading pass 1** (three papers) and **Reading pass 2** |
+| Fully working, used on real papers | The 10-stage pipeline, the number check, the license gate, YouTube packaging, the Library, the Mac app and memory manager, macOS and cloned voices. Finished videos of these kinds: **Auto** (a 52-page paper gave a 13:49 video; a 5-page paper gave 5:50 in 16 minutes end to end), **Study** (9:22 in the cloned voice, with prequestions and recall questions), **Target length**, **Every section**, **Reading pass 1** (three papers) and **Reading pass 2** |
 | Built and unit-tested, not yet run end to end | **Key sections**; **Whole paper** (its one long run stopped during narration when memory ran out, and can be resumed); **Reading pass 3**; **In depth**; playlists' **Make all** (a 10-paper playlist is imported, with one paper correctly blocked by its license, but its videos are not made yet) |
 | Not built yet | Windows and Linux support, a signed and notarized installer, any web or cloud version |
 | Known gap | The number check confirms a number appears in the paper, not that it belongs to the sentence on screen (a paper that reports 55.5% and 57.8% for the same thing passes either) |
