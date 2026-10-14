@@ -19,6 +19,7 @@ from .pdf import LICENSE_NOTICE, video_allowed
 
 # what each kind of video is called in its title and on its thumbnail
 KIND = {"study": ("Study Guide", "STUDY GUIDE"), "read": ("Every Sentence Explained", "EVERY SENTENCE"),
+        "deep": ("Full Paper Explained in Depth", "IN DEPTH"),
         "core": ("Method, Results and Discussion", "KEY SECTIONS"), "auto": ("Explained", "EXPLAINED"),
         "summary": ("Explained", "EXPLAINED"), "full": ("Section by Section", "EVERY SECTION"),
         "pass1": ("First Read: Is It Worth Reading?", "FIRST READ"), "pass2": ("The Evidence", "THE EVIDENCE"),
@@ -235,7 +236,12 @@ def details(meta, depth, description, lic, permission="", captions_name="caption
         "The paper's license does NOT allow this video and no permission is recorded. Do not publish.",
     ]
     if seconds:
-        lines.insert(2, f"(length {int(seconds // 60)}:{int(seconds % 60):02d})")
+        h, m, sec = int(seconds // 3600), int(seconds % 3600 // 60), int(seconds % 60)
+        lines.insert(2, f"(length {h}:{m:02d}:{sec:02d})" if h else f"(length {m}:{sec:02d})")
+        if seconds > 15 * 60:
+            lines += ["", "LONG VIDEO",
+                      "YouTube accepts videos over 15 minutes only from a verified channel (Studio > Settings > "
+                      "Channel > Feature eligibility), and up to 12 hours or 256 GB."]
     return "\n".join(lines) + "\n", dict(title=title, tags=t, allowed=allowed)
 
 

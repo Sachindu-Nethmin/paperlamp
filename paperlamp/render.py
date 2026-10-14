@@ -38,7 +38,7 @@ def page_canvas(pdf, page, cache):
     if out.exists():
         return Image.open(out).convert("RGB")
     raw = cache / f"r{page:03d}"
-    subprocess.run(["pdftoppm", "-r", str(DPI), "-png", "-singlefile", "-f", str(page), "-l", str(page),
+    subprocess.run(["pdftoppm", "-r", str(DPI), "-png", "-singlefile", "-hide-annotations", "-f", str(page), "-l", str(page),
                     str(pdf), str(raw)], check=True)
     pg = Image.open(str(raw) + ".png").convert("RGB")
     cv = Image.new("RGB", (pg.width + 2 * PAD, pg.height + 2 * PAD), BG)
@@ -302,12 +302,17 @@ def render_segment(args):
     t_pen = t_move + 0.15
     pen = min(max((dur - t_pen) * 0.55, 0.8), 5.0)
     info = dict(hud_info, page=spec["page"])
+    still = bool(hud_info.get("still"))           # long videos: no drift, a settled frame is drawn once
+    settled = None
     for k in range(n_frames):
+        if settled is not None:
+            proc.stdin.write(settled)
+            continue
         t = k / FPS
         m = ease(t / t_move) if t_move else 1.0
         rect = lerp(r0, r1, m)
         # slow drift after the move: 3% push-in over the rest of the segment
-        drift = 0.03 * ease((t - t_move) / max(dur - t_move, 0.5)) if t > t_move else 0.0
+        drift = 0.03 * ease((t - t_move) / max(dur - t_move, 0.5)) if t > t_move and not still else 0.0
         cx, cy = (rect[0] + rect[2]) / 2, (rect[1] + rect[3]) / 2
         hw, hh = (rect[2] - rect[0]) / 2 * (1 - drift), (rect[3] - rect[1]) / 2 * (1 - drift)
         rect = [cx - hw, cy - hh, cx + hw, cy + hh]
@@ -329,15 +334,25 @@ def render_segment(args):
             fr = view(hi, rect) if e >= 1 else Image.blend(view(canvas, rect), view(hi, rect), e)
         else:
             fr = view(canvas, rect)
-        proc.stdin.write(hud(fr, info).tobytes())
+        raw = hud(fr, info).tobytes()
+        proc.stdin.write(raw)
+        if still and t >= t_move:                 # nothing moves any more: repeat this frame
+            if hi is None or (base is None and t >= t_move + 0.5) or \
+                    (base is not None and t >= t_move + 0.35 and t >= t_pen + pen):
+                settled = raw
     proc.stdin.close(); proc.wait()
     return out
 
 
-def render_all(jobs, progress, workers=4):
-    """jobs: list of render_segment args. Renders in parallel, reports progress."""
+def render_all(jobs, progress, workers=4, on_done=None):
+    """jobs: list of render_segment args. Renders in parallel, reports progress; on_done(k) is
+    called in order as each clip is finished (so a stopped render can keep them)."""
     done = 0
+    if not jobs:
+        return
     with ProcessPoolExecutor(workers) as ex:
         for _ in ex.map(render_segment, jobs):
+            if on_done:
+                on_done(done)
             done += 1
             progress(done, len(jobs), f"segment {done}/{len(jobs)}")

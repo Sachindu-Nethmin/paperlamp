@@ -7,7 +7,7 @@ Backends
 Every clip is trimmed of leading/trailing silence and normalised; clips are cached
 by text + settings so re-runs only synthesize changed sentences.
 """
-import hashlib, json, os, pathlib, subprocess, sys
+import hashlib, json, os, pathlib, re, subprocess, sys
 
 HERE = pathlib.Path(__file__).resolve().parent
 
@@ -37,6 +37,28 @@ def _post(src, dst):
                     "silenceremove=start_periods=1:start_silence=0.05:start_threshold=-50dB:detection=peak,areverse,"
                     "silenceremove=start_periods=1:start_silence=0.10:start_threshold=-50dB:detection=peak,areverse,"
                     "loudnorm=I=-18:TP=-1.5:LRA=11", "-ar", "44100", "-ac", "2", str(dst)], check=True)
+
+
+MAX_CHARS = 300
+
+
+def pieces(text, limit=MAX_CHARS):
+    """Text cut at sentence ends, then at commas or semicolons, then at spaces, into parts of at
+    most `limit` characters (short text stays whole)."""
+    text = text.strip()
+    if len(text) <= limit:
+        return [text]
+    out = []
+    for unit in re.split(r"(?<=[.?!])\s+", text):
+        while len(unit) > limit:
+            cut = max(unit.rfind(", ", 0, limit), unit.rfind("; ", 0, limit))
+            cut = cut + 1 if cut > limit // 3 else (unit.rfind(" ", 0, limit) if unit.rfind(" ", 0, limit) > 0 else limit)
+            out.append(unit[:cut].strip()); unit = unit[cut:].strip()
+        if out and len(out[-1]) + 1 + len(unit) <= limit:
+            out[-1] += " " + unit
+        elif unit:
+            out.append(unit)
+    return [p for p in out if p]
 
 
 class Say:
@@ -88,17 +110,34 @@ class Chatterbox:
                 continue
 
     def synth(self, text, out):
-        if self.proc is None or self.proc.poll() is not None:
-            self._start()
-        raw = pathlib.Path(out).with_suffix(".raw.wav")
-        self.proc.stdin.write(json.dumps({"text": text, "out": str(raw), "exaggeration": self.exaggeration,
-                                          "cfg_weight": self.cfg}) + "\n")
-        self.proc.stdin.flush()
-        msg = self._reply()
-        if not msg.get("ok"):
-            raise RuntimeError(msg.get("error"))
-        _post(raw, out)
-        raw.unlink(missing_ok=True)
+        """Long text is recorded in pieces of at most MAX_CHARS and joined: the voice model's memory
+        grows with the length of what it says, and a table read as one sentence can crash it."""
+        parts = pieces(text)
+        raws = [pathlib.Path(out).with_suffix(f".raw{k}.wav") for k in range(len(parts))]
+        try:
+            for part, raw in zip(parts, raws):
+                if self.proc is None or self.proc.poll() is not None:
+                    self._start()
+                self.proc.stdin.write(json.dumps({"text": part, "out": str(raw), "exaggeration": self.exaggeration,
+                                                  "cfg_weight": self.cfg}) + "\n")
+                self.proc.stdin.flush()
+                msg = self._reply()
+                if not msg.get("ok"):
+                    raise RuntimeError(msg.get("error"))
+            if len(raws) == 1:
+                _post(raws[0], out)
+            else:                                   # a short breath between the pieces
+                joined = pathlib.Path(out).with_suffix(".joined.wav")
+                inputs = sum((["-i", str(r)] for r in raws), [])
+                chain = "".join(f"[{k}:a]apad=pad_dur=0.25[a{k}];" for k in range(len(raws)))
+                subprocess.run(["ffmpeg", "-y", "-v", "error", *inputs, "-filter_complex",
+                                chain + "".join(f"[a{k}]" for k in range(len(raws))) + f"concat=n={len(raws)}:v=0:a=1",
+                                str(joined)], check=True)
+                _post(joined, out)
+                joined.unlink(missing_ok=True)
+        finally:
+            for r in raws:
+                r.unlink(missing_ok=True)
 
     def close(self):
         if self.proc and self.proc.poll() is None:
@@ -133,7 +172,11 @@ def narrate(items, out_dir, settings, progress, restart_every=6):
                 fresh += 1
                 if isinstance(tts, Chatterbox) and fresh % restart_every == 0:
                     tts.close()                     # fresh server caps GPU memory growth
-            out.write_bytes(cached.read_bytes())
+            out.unlink(missing_ok=True)
+            try:
+                os.link(cached, out)                # a second name, not a second copy: hours of clips are GBs
+            except OSError:
+                out.write_bytes(cached.read_bytes())
             durs[sid] = round(duration(out), 3)
     finally:
         tts.close()

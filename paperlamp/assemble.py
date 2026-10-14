@@ -3,7 +3,7 @@
 Nothing uses estimated timings: each sentence starts where the real audio of the
 previous one ended, plus a short pause (longer between chapters).
 """
-import json, pathlib, re, shutil, subprocess, wave
+import hashlib, json, os, pathlib, re, shutil, subprocess, wave
 
 from . import memory, render
 
@@ -37,20 +37,34 @@ def timeline(sentences, durs):
 
 
 def build_audio(rows, total, audio_dir, out):
-    params, frames = None, bytearray()
-    for r in rows:
-        with wave.open(str(pathlib.Path(audio_dir) / f"{r['id']}.wav")) as w:
-            p = (w.getnchannels(), w.getsampwidth(), w.getframerate())
-            params = params or p
-            data = w.readframes(w.getnframes())
-        ch, sw, sr = params
-        frames += b"\0" * max(int(round(r["start"] * sr)) * ch * sw - len(frames), 0)
-        frames += data
-    ch, sw, sr = params
-    frames += b"\0" * max(int(round(total * sr)) * ch * sw - len(frames), 0)
+    """The narration track: each clip at its start time, silence between. Written to disk as it
+    goes, so an hours-long video does not hold gigabytes of audio in memory."""
     raw = pathlib.Path(out).with_name("narration_raw.wav")
-    with wave.open(str(raw), "wb") as w:
-        w.setnchannels(ch); w.setsampwidth(sw); w.setframerate(sr); w.writeframes(bytes(frames))
+    w_out, params, written = None, None, 0            # written: bytes of audio so far
+
+    def silence(n):
+        nonlocal written
+        while n > 0:
+            k = min(n, 1 << 22)
+            w_out.writeframesraw(b"\0" * k)
+            written += k; n -= k
+    try:
+        for r in rows:
+            with wave.open(str(pathlib.Path(audio_dir) / f"{r['id']}.wav")) as w:
+                p = (w.getnchannels(), w.getsampwidth(), w.getframerate())
+                data = w.readframes(w.getnframes())
+            if w_out is None:
+                params = p
+                w_out = wave.open(str(raw), "wb")
+                w_out.setnchannels(p[0]); w_out.setsampwidth(p[1]); w_out.setframerate(p[2])
+            ch, sw, sr = params
+            silence(int(round(r["start"] * sr)) * ch * sw - written)
+            w_out.writeframesraw(data); written += len(data)
+        ch, sw, sr = params
+        silence(int(round(total * sr)) * ch * sw - written)
+    finally:
+        if w_out is not None:
+            w_out.close()                              # fixes the header's length
     ln = "loudnorm=I=-14:TP=-1.5:LRA=11"
     m = run(["ffmpeg", "-hide_banner", "-i", str(raw), "-af", ln + ":print_format=json", "-f", "null", "-"]).stderr
     j = json.loads(m[m.rindex("{"):m.rindex("}") + 1])
@@ -129,18 +143,36 @@ def captions(rows, out_dir):
     return len(cues)
 
 
+def clip_key(args):
+    """What a clip depends on: its frames, page spot, the spot before it, chapter label and card,
+    and the paper's PDF. The same key means the clip on disk can be reused."""
+    out, pdf, _cache, n_frames, spec, prev, hud, card = args
+    st = os.stat(pdf)
+    blob = json.dumps([RENDER_VERSION, n_frames, spec, prev, hud, card, st.st_size, int(st.st_mtime)],
+                      sort_keys=True, default=str)
+    return hashlib.sha1(blob.encode()).hexdigest()[:16]
+
+
 def venue_year(meta, sep=" "):
     """ "ICLR 2024", not "ICLR 2024 2024" when the venue already carries the year."""
     venue, year = meta.get("venue", ""), str(meta.get("year", "") or "")
     return sep.join(x for x in (venue, "" if year and year in venue else year) if x)
 
 
-def build(job, sentences, durs, meta, pages, progress, voice_note=""):
+RENDER_VERSION = "2"             # part of each clip's key: a renderer change re-renders every clip
+
+
+def build(job, sentences, durs, meta, pages, progress, voice_note="", still=None, long_form=40 * 60):
+    """still: no slow camera drift, so a settled frame is drawn once and repeated, and the video
+    compresses to a fraction (default: only for videos longer than long_form seconds). Clips
+    already rendered for this exact timeline are kept and reused when a stopped job resumes."""
     job = pathlib.Path(job)
     out, work = job / "out", job / "build"
     out.mkdir(exist_ok=True)
-    shutil.rmtree(work, ignore_errors=True); work.mkdir()
+    work.mkdir(exist_ok=True)
     rows, total = timeline(sentences, durs)
+    long = total > long_form
+    still = long if still is None else still
     progress(0, 4, "audio")
     build_audio(rows, total, job / "audio", out / "narration.wav")
     # one segment per sentence
@@ -155,7 +187,7 @@ def build(job, sentences, durs, meta, pages, progress, voice_note=""):
                              sub=" ".join(x for x in ("Pages shown are from the paper.", voice_note) if x))
         elif r.get("card"):
             card_spec = dict(quiz=r["card"])
-        hud = dict(chapter=r["chapter"], pages=pages)
+        hud = dict(chapter=r["chapter"], pages=pages, still=bool(still))
         jobs.append((work / f"seg_{i:04d}.mp4", str(job / "paper.pdf"), str(job / "cam"), r["frames"],
                      r.get("align"), prev, hud, card_spec))
         if not card_spec:
@@ -164,7 +196,22 @@ def build(job, sentences, durs, meta, pages, progress, voice_note=""):
     for pg in sorted({r["align"]["page"] for r in rows if r.get("align")}):
         render.page_canvas(job / "paper.pdf", pg, job / "cam")
     workers = memory.render_workers()                    # as many as the free memory allows
-    render.render_all(jobs, lambda d, n, m: progress(1 + d / n * 2, 4, f"{m} · {workers} workers"), workers=workers)
+    manifest = work / "rendered.json"
+    try:
+        made = json.loads(manifest.read_text())
+    except (OSError, ValueError):
+        made = {}
+    keys = [clip_key(j) for j in jobs]
+    todo = [k for k, j in enumerate(jobs) if made.get(j[0].name) != keys[k] or not j[0].exists()]
+    kept = len(jobs) - len(todo)
+
+    def done(k):                                         # a finished clip is recorded at once
+        made[jobs[k][0].name] = keys[k]
+        manifest.write_text(json.dumps(made))
+    note = f" · {kept} kept from before" if kept else ""
+    render.render_all([jobs[k] for k in todo], lambda d, n, m: progress(1 + (kept + d) / len(jobs) * 2, 4,
+                      f"segment {kept + d}/{len(jobs)} · {workers} workers{note}"), workers=workers,
+                      on_done=lambda d: done(todo[d]))
     (work / "concat.txt").write_text("".join(f"file '{j[0].name}'\n" for j in jobs))
     run(["ffmpeg", "-y", "-hide_banner", "-f", "concat", "-safe", "0", "-i", "concat.txt", "-c", "copy",
          "video_nocap.mp4"], cwd=work)
@@ -174,8 +221,14 @@ def build(job, sentences, durs, meta, pages, progress, voice_note=""):
     final = out / "video.mp4"
     run(["ffmpeg", "-y", "-hide_banner", "-i", "video_nocap.mp4", "-i", str(out / "narration.wav"),
          "-vf", "ass=captions.ass", "-r", str(FPS), "-pix_fmt", "yuv420p", "-c:v", "libx264", "-preset", "medium",
-         "-crf", "20", "-c:a", "aac", "-b:a", "192k", "-shortest", "-movflags", "+faststart", str(final)], cwd=work)
+         "-crf", "23" if long else "20", "-c:a", "aac", "-b:a", "192k", "-shortest", "-movflags", "+faststart",
+         str(final)], cwd=work)
     (job / "timeline.json").write_text(json.dumps(dict(rows=rows, total=total), indent=1))
     shutil.rmtree(work, ignore_errors=True)               # the per-sentence clips are in the final video now
+    (out / "narration.m4a").unlink(missing_ok=True)
+    if long:                                             # hours of WAV are gigabytes: keep the narration as AAC
+        run(["ffmpeg", "-y", "-hide_banner", "-i", str(out / "narration.wav"), "-c:a", "aac", "-b:a", "160k",
+             str(out / "narration.m4a")])
+        (out / "narration.wav").unlink(missing_ok=True)
     progress(4, 4, f"{int(total // 60)}:{int(total % 60):02d} video")
     return final, total

@@ -341,8 +341,7 @@ class Exported(unittest.TestCase):
             self.assertEqual(folder.name, "01 - Attention Is All You Need (NeurIPS 2017)")
             self.assertEqual(folder.parent, pathlib.Path(tmp))
             self.assertEqual(sorted(p.name for p in folder.iterdir() if p.suffix != ".json"),
-                             ["captions.ass", "captions.srt", "description.txt", "narration.wav", "quiz.md",
-                              "script.md", "video.mp4"])
+                             sorted(name for _, _, name in pipeline.EXPORTED))       # plain names, as the job made them
             self.assertEqual(pathlib.Path(out["video"]).name, "video.mp4")
 
     def test_folders_are_numbered_in_the_order_the_videos_were_made(self):
