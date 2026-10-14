@@ -117,6 +117,35 @@ video{width:100%;border-radius:12px;background:#000;margin-top:14px}
 .memrow{font-size:13px;color:var(--muted);margin-top:4px}.memrow b{color:var(--text)}
 .memtop{font-size:12px;color:var(--dim);margin-top:8px}
 .waiting{margin-top:14px;padding:10px 12px;border:1px dashed var(--line);border-radius:10px;color:var(--muted);font-size:13px}
+.libtabs{display:flex;gap:6px;margin-bottom:18px}
+.libtabs button{background:none;border:1px solid var(--line);color:var(--muted);border-radius:999px;padding:5px 14px;font:inherit;font-size:13px;cursor:pointer}
+.libtabs button.on{border-color:var(--accent);color:var(--accent)}
+.plgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:18px;align-items:start}
+.plcard{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:16px;cursor:pointer}
+.plcard:hover{border-color:var(--accent)}
+.plcard .mosaic{display:grid;grid-template-columns:1fr 1fr;gap:4px;aspect-ratio:16/9;border-radius:10px;overflow:hidden;background:#0f1a2d;margin-bottom:12px}
+.plcard .mosaic img{width:100%;height:100%;object-fit:cover}
+.plcard .mosaic .none{grid-column:1/3;display:grid;place-items:center;color:var(--dim);font-size:13px}
+.plform textarea{width:100%;min-height:150px;background:#0f1a2d;border:1px solid var(--line);color:var(--text);border-radius:10px;padding:9px 11px;font:13px/1.45 ui-monospace,Menlo,monospace}
+.plhead{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;align-items:flex-end;margin-bottom:6px}
+.plctl{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.plctl select{width:auto}
+.year{font-size:13px;letter-spacing:.14em;color:var(--accent);margin:22px 0 8px;display:flex;align-items:center;gap:10px}
+.year:after{content:"";flex:1;border-top:1px solid var(--line)}
+.prow{display:grid;grid-template-columns:34px 176px minmax(0,1fr) 230px;gap:14px;align-items:center;background:var(--panel);
+  border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:8px}
+@media(max-width:900px){.prow{grid-template-columns:28px minmax(0,1fr)}.prow .pthumb{display:none}.prow .pstate{grid-column:2}}
+.prow .n{color:var(--dim);font-variant-numeric:tabular-nums;text-align:right;font-weight:700}
+.prow .pthumb{aspect-ratio:16/9;border-radius:8px;overflow:hidden;background:#0f1a2d;display:grid;place-items:center;color:var(--dim);font-size:12px;position:relative}
+.prow .pthumb img{width:100%;height:100%;object-fit:cover}
+.prow .pt{font-weight:700;line-height:1.3}
+.prow .pt a{color:var(--text);text-decoration:none}.prow .pt a:hover{color:var(--accent)}
+.prow .pa{font-size:12px;color:var(--muted);margin-top:3px}
+.prow .pm{font-size:12px;color:var(--dim);margin-top:4px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.pstate .st{font-size:12px;color:var(--muted)}.pstate .st b{color:var(--text)}
+.pstate .bar{margin:6px 0}
+.pstate .acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.pstate input{width:100%;margin-top:6px;font-size:12px;padding:6px 8px}
 </style>
 </head>
 <body>
@@ -136,25 +165,27 @@ video{width:100%;border-radius:12px;background:#000;margin-top:14px}
       <select id="model"></select>
       <div class="hint" id="modelHint"></div>
       <label>Kind of video</label>
-      <div class="seg" id="kindSeg"><button data-v="explainer" class="on">Explainer</button><button data-v="study">Study</button><button data-v="reading">Reading pass</button></div>
+      <div class="seg" id="kindSeg"><button data-v="explainer" class="on">Explainer</button><button data-v="study">Study</button><button data-v="reading">Keshav method</button></div>
       <div class="hint" id="studyBox" hidden>Built on what learning research says works, to get the most out of the paper in the least time: the big picture and the key terms first, then short segments on the method, results and discussion, each opening with a question to keep in mind and ending with its answer; every figure explained, the limitations read critically, and recall questions at the end, answered after a pause. The description lists the questions again, to test yourself the next day. Related work and the appendix are left out. About 12 to 14 min for a 20-page paper.</div>
       <div id="explainerBox">
-        <div class="seg sub" id="lenSeg"><button data-v="auto" class="on">Auto</button><button data-v="core">Key sections</button><button data-v="summary">Target length</button><button data-v="read">Whole paper</button></div>
+        <div class="seg sub" id="lenSeg"><button data-v="auto" class="on">Auto</button><button data-v="core">Key sections</button><button data-v="summary">Target length</button><button data-v="read">Whole paper</button><button data-v="deep">In depth</button></div>
         <div class="hint" id="coreHint" hidden>The methodology, results and discussion in detail, in the paper's order: how the study or system works step by step, every key result with its figures and tables, then what the results mean and their limitations. The introduction and related work only feed a short opening; the appendix is left out. Often 15 to 20 min.</div>
         <div class="hint" id="autoHint">Each section gets the time its content needs: its key numbers, method steps and claims, and a walk through each figure and table. Nothing is padded to reach a length or cut to fit one. Related work and the appendix are left out.</div>
         <div id="minBox" hidden><label>Target length: <b id="minv">8</b> min</label>
         <input type="range" id="minutes" min="3" max="30" value="8"></div>
-        <div id="readBox" hidden><div class="hint">Every sentence of the paper, from the title to the last section, explained in plain words while the highlighter sits on that exact sentence. Headings are read as they are, every author by name, and each figure and table caption is explained with the figure on screen. Long: about 5 minutes of video per page, and recording it in your cloned voice takes several hours.</div>
+        <div id="readBox" hidden><div class="hint" id="readHint">Every sentence of the paper, from the title to the last section, explained in plain words while the highlighter sits on that exact sentence. Headings are read as they are, every author by name, and each figure and table caption is explained with the figure on screen. Long: about 5 minutes of video per page, and recording it in your cloned voice takes several hours.</div>
+        <div class="hint" id="deepHint" hidden>A full lecture on the paper, often hours long. Every sentence explained at length, with each technical term defined where it is first used; every equation taken from the paper's own LaTeX (arXiv source), read aloud and taken apart symbol by symbol while that symbol is highlighted; every figure and table walked through; key terms and background first, and a recap after each section. Every number is still checked against the paper. About 5 to 7 minutes of video per page; in your cloned voice, recording takes about 4 times the video's length.</div>
         <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="readAppendix" style="width:auto"> Also the appendix</label></div>
       </div>
       <div id="readingBox" hidden>
+        <div class="hint" style="margin-top:0"><b>Keshav's three-pass method.</b> Read each paper in up to three passes, and stop as soon as you know enough. Pick the pass this video should cover.</div>
         <div class="phases" id="phases">
           <button class="phase on" data-v="pass1"><b>Pass 1</b><span>Is it relevant?</span>
-            <small>5 to 10 min · title, abstract and introduction, how the paper is organised, the conclusion, every figure with its caption, the references; then what problem, what they did, what they found</small></button>
+            <small>Reading time 5 to 10 min · title, abstract, introduction, all headings, conclusions, skim the references · outcome: decide whether to read on at all. The video also shows every figure with its caption and answers what problem, what they did, what they found.</small></button>
           <button class="phase" data-v="pass2"><b>Pass 2</b><span>The evidence</span>
-            <small>10 to 20 min · the setup first, each result with what it compares, the limitations, references to follow up</small></button>
+            <small>Reading time about 1 hour · read the body, study figures and tables carefully, ignore proofs and fine detail, mark references to follow · outcome: summarise the paper with its supporting evidence. Video about 10 to 20 min.</small></button>
           <button class="phase" data-v="pass3"><b>Pass 3</b><span>The method in depth</span>
-            <small>20+ min · the method step by step with the appendix, the assumptions it rests on, what reproducing it needs</small></button>
+            <small>Reading time 4 to 5 hours · virtually re-implement the work, challenge every assumption, note what you would have done differently · outcome: reconstruct it, and see the flaws the authors did not state. Video 20+ min.</small></button>
         </div>
         <div class="hint">After S. Keshav, "How to Read a Paper" (2007). From a finished job you can make the next pass without the model reading the paper again.</div>
       </div>
@@ -198,7 +229,7 @@ const $ = s => document.querySelector(s);
 let pdfFile = null, voice = "say", source = "ollama", current = null, timer = null, setup = null, allJobs = [];
 let kind = "explainer", lenMode = "auto", phase = "pass1";
 const depthNow = () => kind === "reading" ? phase : kind === "study" ? "study" : lenMode;
-const KINDS = {summary: "Explainer", auto: "Auto length", core: "Key sections", read: "Whole paper", study: "Study", full: "Every section", pass1: "Pass 1", pass2: "Pass 2", pass3: "Pass 3"};
+const KINDS = {summary: "Explainer", auto: "Auto length", core: "Key sections", read: "Whole paper", deep: "In depth", study: "Study", full: "Every section", pass1: "Pass 1", pass2: "Pass 2", pass3: "Pass 3"};
 const kindChip = (d, mins) => `<span class="kind ${d && d.startsWith("pass") ? "pass" : ""}">${d === "summary" || !d ? (mins ? mins + " min" : "Explainer") : KINDS[d]}</span>`;
 
 function seg(id, cb){ document.querySelectorAll(`#${id} button`).forEach(b => b.onclick = () => {
@@ -212,7 +243,8 @@ function pickVoice(v){
 seg("srcSeg", v => { source = v; $("#importBox").hidden = v !== "import"; });
 seg("kindSeg", v => { kind = v; $("#explainerBox").hidden = v !== "explainer"; $("#readingBox").hidden = v !== "reading";
                       $("#studyBox").hidden = v !== "study"; });
-seg("lenSeg", v => { lenMode = v; $("#minBox").hidden = v !== "summary"; $("#readBox").hidden = v !== "read";
+seg("lenSeg", v => { lenMode = v; $("#minBox").hidden = v !== "summary"; $("#readBox").hidden = v !== "read" && v !== "deep";
+                     $("#readHint").hidden = v !== "read"; $("#deepHint").hidden = v !== "deep";
                      $("#autoHint").hidden = v !== "auto"; $("#coreHint").hidden = v !== "core"; });
 document.querySelectorAll("#phases .phase").forEach(b => b.onclick = () => {
   document.querySelectorAll("#phases .phase").forEach(x => x.classList.toggle("on", x === b)); phase = b.dataset.v; });
@@ -326,6 +358,8 @@ async function poll(){
       <div class="links"><a href="${base}${j.outputs.video}" download>Download video</a><a href="${base}${j.outputs.captions}" download>Captions (.srt)</a>
       <a href="${base}${j.outputs.description}" target="_blank">YouTube description</a><a href="${base}${j.outputs.script}" target="_blank">Script</a>
       ${j.outputs.quiz ? `<a href="${base}${j.outputs.quiz}" target="_blank">Quiz for students</a>` : ""}
+      ${j.outputs.glossary ? `<a href="${base}${j.outputs.glossary}" target="_blank">Glossary</a>` : ""}
+      ${j.outputs.equations ? `<a href="${base}${j.outputs.equations}" target="_blank">Equations</a>` : ""}
       <a href="${base}script.json" download>script.json</a>
       <a href="#" onclick="reveal();return false">Show in Finder</a></div>
       <button class="btn small" style="margin-top:12px" onclick="revealYT('${j.id}', this)">📁 Open YouTube folder</button>`;
@@ -364,7 +398,7 @@ function passBar(j){
   };
   return `<div class="passbar"><div class="sub">Reading passes for this paper</div>
     <div class="row">${["pass1","pass2","pass3"].map(btn).join("")}</div>
-    <div class="row">${["study","auto","core","read","summary"].map(btn).join("")}</div>
+    <div class="row">${["study","auto","core","read","deep","summary"].map(btn).join("")}</div>
     <div class="hint">New ones reuse this job's text, figures and notes, so only sections it skipped are read again.</div></div>`;
 }
 async function derive(d){
@@ -421,21 +455,34 @@ function licChip(it){
   if(y.permission) return `<span class="lic">with permission</span>`;
   return /NC/.test(y.license||"") ? `<span class="lic nc">${esc(y.license)} · no ads</span>` : `<span class="lic">${esc(y.license||"open license")}</span>`;
 }
+let libTab = "videos", plOpen = null, backTo = null, libShown = "";
+function libPut(html){                      // redraw only when something changed (a redraw can swallow a click)
+  if(html === libShown && $("#library").innerHTML) return false;
+  libShown = html; $("#library").innerHTML = html; return true;
+}
+function libFrame(inner){
+  return `<div class="libtabs"><button class="${libTab === "videos" ? "on" : ""}" onclick="libTab='videos';plOpen=null;loadLibrary()">All videos</button>
+    <button class="${libTab === "playlists" ? "on" : ""}" onclick="libTab='playlists';plOpen=null;loadLibrary()">Playlists</button></div>` + inner;
+}
 async function loadLibrary(){
+  backTo = null;
+  if(libTab === "playlists") return plOpen ? openPlaylist(plOpen) : loadPlaylists();
   libItems = await (await fetch("/api/library")).json();
-  $("#library").innerHTML = libItems.length ? `<h2>Library · ${libItems.length} video${libItems.length>1?"s":""}</h2><div class="libgrid">` +
+  if(libTab !== "videos") return;
+  libPut(libFrame(libItems.length ? `<h2>Library · ${libItems.length} video${libItems.length>1?"s":""}</h2><div class="libgrid">` +
     libItems.map((it, i) => `<div class="vcard" onclick="openVideo(${i})">
       <div class="thumb">${it.thumbnail ? `<img src="${it.thumbnail}?v=${Math.round(it.created||0)}" loading="lazy">` : "no thumbnail yet"}
         ${it.seconds ? `<span class="len">${mmss(it.seconds)}</span>` : ""}</div>
       <div class="meta"><div class="t">${esc(it.youtube ? it.youtube.title : it.paper)}</div>
         <div class="s">${kindChip(it.depth)}<span>${new Date((it.created||0)*1000).toLocaleDateString()}</span>${licChip(it)}</div>
         <button class="copy" style="margin-top:10px" onclick="event.stopPropagation(); revealYT('${it.id}', this)">📁 Open YouTube folder</button></div></div>`).join("") + `</div>`
-    : `<div class="empty">No finished videos yet. Finished videos appear here with their thumbnail and YouTube text.</div>`;
+    : `<div class="empty">No finished videos yet. Finished videos appear here with their thumbnail and YouTube text.</div>`));
 }
 function openVideo(i){
   const it = libItems[i], y = it.youtube;
   const copyBtn = (id) => `<button class="copy" onclick="copyText('${id}', this)">Copy</button>`;
-  $("#library").innerHTML = `<div class="row" style="margin-bottom:16px"><button class="copy" onclick="loadLibrary()">← Library</button></div>
+  libShown = "";
+  $("#library").innerHTML = `<div class="row" style="margin-bottom:16px"><button class="copy" onclick="${backTo ? `openPlaylist('${backTo}')` : "loadLibrary()"}">← ${backTo ? "Playlist" : "Library"}</button></div>
     <div class="vdetail"><div>
       <video controls preload="metadata" src="${it.video}" ${it.thumbnail ? `poster="${it.thumbnail}"` : ""}></video>
       <div class="title" style="margin-top:14px">${esc(y ? y.title : it.paper)}</div>
@@ -457,6 +504,158 @@ function openVideo(i){
       : `<div class="empty">This video was made before YouTube files existed. Click "Make YouTube files".</div>`}
     </div></div>`;
 }
+// ── Playlists: papers in the order they first appeared, each with its video ─────────────────
+const ORDER_NAMES = {paper_date: "Paper date, oldest first", paper_date_desc: "Paper date, newest first", made: "Order the videos were made", added: "Order added"};
+const fmtLen = s => !s ? "" : s >= 3600 ? `${Math.floor(s/3600)}:${String(Math.floor(s%3600/60)).padStart(2,"0")}:${String(Math.round(s%60)).padStart(2,"0")}` : mmss(s);
+const day = d => d ? new Date(d + "T12:00:00").toLocaleDateString(undefined, {day: "numeric", month: "short", year: "numeric"}) : "";
+// don't redraw over something being typed, chosen or watched
+const plBusy = () => !!document.querySelector("#library .vdetail") ||
+  [...document.querySelectorAll("#library input, #library textarea, #library select")].some(x => x === document.activeElement ||
+    (x.type === "checkbox" ? x.checked : x.tagName === "SELECT" ? x.id === "plDepth" && x.value !== "deep" : x.value));
+async function loadPlaylists(){
+  plOpen = null;
+  const pls = await (await fetch("/api/playlists")).json();
+  if(libTab !== "playlists" || plOpen) return;
+  const cards = pls.map(p => `<div class="plcard" onclick="openPlaylist('${p.id}')">
+      <div class="mosaic">${p.thumbs.length ? p.thumbs.map(t => `<img src="${t}" loading="lazy">`).join("") : `<div class="none">${p.n} paper${p.n === 1 ? "" : "s"}, no videos yet</div>`}</div>
+      <div class="t" style="font-weight:800">${esc(p.name)}</div>
+      <div class="hint">${p.n} papers${p.span.length ? " · " + p.span.map(x => x.slice(0, 4)).filter((x, i, a) => a.indexOf(x) === i).join(" to ") : ""} · ${KINDS[p.depth] || p.depth}
+        ${p.seconds ? " · " + fmtLen(p.seconds) + " made" : ""}${p.counts.done ? ` · ${p.counts.done} done` : ""}${p.counts.making ? " · making 1" : ""}${p.counts.waiting ? ` · ${p.counts.waiting} waiting` : ""}</div></div>`).join("");
+  libPut(libFrame(`<h2>Playlists</h2><div class="plgrid">${cards}
+    <div class="card plform"><h2>New playlist</h2>
+      <label>Name</label><input type="text" id="plName" placeholder="e.g. Issue resolution benchmarks, 2022 to 2026">
+      <label>Kind of video</label><select id="plDepth"><option value="deep">In depth (every sentence, equations and terms; hours)</option>
+        <option value="read">Whole paper (every sentence)</option><option value="auto">Auto length</option><option value="core">Key sections</option>
+        <option value="study">Study</option><option value="pass1">Keshav pass 1</option><option value="pass2">Keshav pass 2</option></select>
+      <label>Papers: arXiv links or IDs, one per line</label>
+      <textarea id="plText" placeholder="https://arxiv.org/abs/2310.06770&#10;2405.15793&#10;2212.01479 https://link.springer.com/content/pdf/....pdf  (a second link: a PDF to use instead of arXiv's)"></textarea>
+      <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="plAppendix" style="width:auto"> Also the appendix</label>
+      <button class="btn" onclick="newPlaylist(this)">Create playlist</button>
+      <div class="hint">Each paper's title, authors, first-posted date and license come from arXiv; the PDF and its LaTeX source are downloaded. Videos are made when you press Make all, one at a time, oldest paper first. Papers whose license does not allow a video wait for your permission note.</div></div></div>`));
+}
+async function newPlaylist(btn){
+  const text = $("#plText").value.trim();
+  if(!text){ alert("Paste at least one arXiv link or ID"); return; }
+  btn.disabled = true;
+  const r = await (await fetch("/api/playlists", {method: "POST", body: JSON.stringify({name: $("#plName").value.trim() || "New playlist",
+              depth: $("#plDepth").value, text, settings: {read_appendix: $("#plAppendix").checked ? 1 : 0}})})).json();
+  btn.disabled = false;
+  if(r.error){ alert(r.error); return; }
+  openPlaylist(r.id);
+}
+function licTag(it){
+  if(!it.license && it.status !== "ready") return "";
+  if(it.status_info && it.status_info.permission) return `<span class="lic">with permission</span>`;
+  if(!it.allowed) return `<span class="lic no">${esc(it.license || "no open license")} · needs permission</span>`;
+  return `<span class="lic ${/NC/.test(it.license) ? "nc" : ""}">${esc(it.license)}${/NC/.test(it.license) ? " · no ads" : ""}</span>`;
+}
+function prow(it, n, pid){
+  const si = it.status_info || {}, st = si.state || it.status;
+  const permBox = `<input type="text" id="perm_${it.arxiv.replace(/\W/g, "_")}" placeholder="Who gave permission, and when">
+      <div class="acts"><button class="copy" onclick="plPermission('${pid}', '${it.arxiv}')">I have permission</button></div>`;
+  let state;
+  if(it.status === "fetching") state = `<div class="st">Fetching from arXiv…</div>`;
+  else if(it.status === "error" && !it.job) state = `<div class="st" style="color:var(--bad)">${esc(it.error || "could not fetch")}</div>`;
+  else if(!it.job) state = it.allowed ? `<div class="st"><b>Ready</b> · not started</div>
+      <div class="acts"><button class="copy" onclick="plMake('${pid}', this, '${it.arxiv}')">▶ Make this video</button></div>`
+      : `<div class="st">Waiting for permission</div>${permBox}`;
+  else if(st === "done") state = `<div class="st"><b>Done</b> · ${fmtLen(si.seconds)}${si.made ? " · made " + new Date(si.made * 1000).toLocaleDateString() : ""}</div>
+      <div class="acts"><button class="copy" onclick="watch('${it.job}', '${pid}')">▶ Watch</button><button class="copy" onclick="revealYT('${it.job}', this)">📁 YouTube folder</button></div>`;
+  else if(st === "license") state = `<div class="st">Stopped by its license</div>${permBox}`;
+  else {
+    const label = {making: `<b>Making</b> · ${Math.round(si.progress * 100)}%`, waiting: `<b>Waiting</b> · ${si.queued} in line`, error: `<b style="color:var(--bad)">Error</b>`,
+                   paused: `Paused at ${Math.round(si.progress * 100)}%`, "not started": "Not started"}[st] || esc(st);
+    state = `<div class="st">${label}${st === "making" && si.stage ? " · " + esc(si.stage) : ""}</div>
+      ${st === "making" || st === "paused" ? `<div class="bar"><div style="width:${(si.progress * 100).toFixed(1)}%"></div></div>` : ""}
+      ${st === "making" && si.msg ? `<div class="hint" style="margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(si.msg)}</div>` : ""}
+      <div class="acts"><button class="copy" onclick="showView('make');open('${it.job}')">Open the job</button></div>`;
+  }
+  const dates = it.published ? `First posted ${day(it.published)}` + (it.updated && it.updated !== it.published ? ` · latest version ${day(it.updated)}` : "") : "";
+  return `<div class="prow"><div class="n">${n}</div>
+    <div class="pthumb">${si.thumbnail ? `<img src="${si.thumbnail}" loading="lazy">` : (it.status === "fetching" ? "fetching…" : "no video yet")}
+      ${si.seconds ? `<span class="len" style="position:absolute;right:6px;bottom:6px;background:rgba(0,0,0,.75);color:#fff;font-size:11px;padding:1px 5px;border-radius:5px">${fmtLen(si.seconds)}</span>` : ""}</div>
+    <div><div class="pt"><a href="${it.abs_url || "#"}" target="_blank">${esc(it.title)}</a></div>
+      <div class="pa">${esc((it.authors || []).join(", "))}</div>
+      <div class="pm">${dates ? `<span>${dates}</span>` : ""}${it.venue ? `<span>· ${esc(it.venue)}</span>` : ""}<span>· arXiv ${esc(it.arxiv)}</span>${licTag(it)}
+        ${it.pdf_url ? `<span>· PDF from ${esc(new URL(it.pdf_url).hostname)}</span>` : ""}
+        <a href="#" style="color:var(--dim)" onclick="plRemove('${pid}', '${it.arxiv}');return false">remove</a></div></div>
+    <div class="pstate">${state}</div></div>`;
+}
+async function openPlaylist(id, soft){
+  if(soft && plBusy()) return;
+  plOpen = id; libTab = "playlists";
+  const v = await (await fetch(`/api/playlists/${id}`)).json();
+  if(v.error){ plOpen = null; return loadPlaylists(); }
+  if(plOpen !== id || libTab !== "playlists" || (soft && plBusy())) return;
+  let rows = "", lastYear = null;
+  v.items.forEach((it, k) => {
+    const y = (it.published || "").slice(0, 4) || "No date";
+    if(v.order.startsWith("paper_date") && y !== lastYear){ rows += `<div class="year">${y}</div>`; lastYear = y; }
+    rows += prow(it, k + 1, id);
+  });
+  const c = v.counts || {}, makeable = v.items.filter(it => it.status === "ready" && (it.allowed || (it.status_info || {}).permission) && (it.status_info || {}).state !== "done").length;
+  const scroll = window.scrollY;
+  const changed = libPut(libFrame(`<div class="row" style="margin-bottom:14px"><button class="copy" onclick="plOpen=null;loadPlaylists()">← Playlists</button></div>
+    <div class="plhead"><div><div class="title">${esc(v.name)}</div>
+      <div class="sub">${v.items.length} papers · ${KINDS[v.depth] || v.depth}${v.seconds ? " · " + fmtLen(v.seconds) + " of video made" : ""}
+        ${c.done ? ` · ${c.done} done` : ""}${c.making ? " · 1 making" : ""}${c.waiting ? ` · ${c.waiting} waiting` : ""}</div></div>
+      <div class="plctl"><select onchange="plOrder('${id}', this.value)">${Object.entries(ORDER_NAMES).map(([k, n]) => `<option value="${k}" ${k === v.order ? "selected" : ""}>${n}</option>`).join("")}</select>
+        <button class="btn small" onclick="plMake('${id}', this)" ${makeable ? "" : "disabled"}>Make all (${makeable})</button>
+        <button class="copy" onclick="$('#plAdd').hidden = !$('#plAdd').hidden">Add papers</button>
+        <button class="copy" onclick="plExport('${id}', this)">📁 Export folder</button>
+        <button class="copy" onclick="plRename('${id}')">Rename</button>
+        <button class="copy" onclick="plDelete('${id}')">Delete</button></div></div>
+    <div id="plAdd" class="card plform" style="margin-top:12px" hidden><label style="margin-top:0">arXiv links or IDs, one per line</label><textarea id="plMore"></textarea>
+      <button class="btn small" style="margin-top:10px" onclick="plAddMore('${id}', this)">Add</button></div>
+    <div class="hint">Videos are made one at a time in this order${v.order.startsWith("paper_date") ? ", by the date each paper first appeared on arXiv" : ""}. In-depth videos run for hours: about 4 times as long to record in your cloned voice.</div>
+    ${rows || `<div class="empty">No papers yet.</div>`}`));
+  if(changed) window.scrollTo(0, scroll);
+}
+async function plOrder(id, by){ await fetch(`/api/playlists/${id}/order?by=${by}`, {method: "POST"}); openPlaylist(id); }
+async function plMake(id, btn, ax){
+  btn.disabled = true;
+  const r = await (await fetch(`/api/playlists/${id}/make${ax ? "?arxiv=" + encodeURIComponent(ax) : ""}`, {method: "POST"})).json();
+  if(r.error) alert(r.error);
+  else if(r.skipped.length) alert(`Queued ${r.queued.length} video${r.queued.length === 1 ? "" : "s"}. Not queued:\n` + r.skipped.map(([t, why]) => `• ${t}: ${why}`).join("\n"));
+  listJobs(); openPlaylist(id);
+}
+async function plAddMore(id, btn){
+  btn.disabled = true;
+  const r = await (await fetch(`/api/playlists/${id}/add`, {method: "POST", body: $("#plMore").value})).json();
+  btn.disabled = false;
+  if(r.error){ alert(r.error); return; }
+  $("#plMore").value = ""; openPlaylist(id);
+}
+async function plExport(id, btn){
+  btn.disabled = true;
+  const r = await (await fetch(`/api/playlists/${id}/export`, {method: "POST"})).json();
+  btn.disabled = false;
+  if(r.error) alert(r.error);
+}
+async function plRename(id){
+  const n = prompt("Playlist name"); if(!n) return;
+  await fetch(`/api/playlists/${id}/rename`, {method: "POST", body: n}); openPlaylist(id);
+}
+async function plDelete(id){
+  if(!confirm("Delete this playlist? Its videos and jobs stay in the Library.")) return;
+  await fetch(`/api/playlists/${id}/delete`, {method: "POST"}); plOpen = null; loadPlaylists();
+}
+async function plRemove(id, ax){
+  if(!confirm("Remove this paper from the playlist? Its job and video stay.")) return;
+  await fetch(`/api/playlists/${id}/remove?arxiv=${encodeURIComponent(ax)}`, {method: "POST"}); openPlaylist(id);
+}
+async function plPermission(id, ax){
+  const note = $("#perm_" + ax.replace(/\W/g, "_")).value.trim();
+  const r = await (await fetch(`/api/playlists/${id}/permission?arxiv=${encodeURIComponent(ax)}`, {method: "POST", body: note})).json();
+  if(r.error){ alert(r.error); return; }
+  openPlaylist(id);
+}
+async function watch(jid, pid){
+  libItems = await (await fetch("/api/library")).json();
+  const i = libItems.findIndex(x => x.id === jid);
+  if(i < 0) return;
+  backTo = pid; openVideo(i);
+}
 function copyText(id, btn){ navigator.clipboard.writeText($("#" + id).innerText).then(() => { btn.textContent = "Copied"; setTimeout(() => btn.textContent = "Copy", 1500); }); }
 async function makeYT(id, i){
   const r = await (await fetch(`/api/jobs/${id}/youtube`, {method: "POST"})).json();
@@ -474,6 +673,22 @@ async function revealYT(id, btn){
 
 loadSetup(); listJobs(); pollMemory(); setInterval(pollMemory, 5000);
 if(location.hash.startsWith("#job=")) open(location.hash.slice(5));
+// keep the screen current: after a restart the engine may already be working on a job, and a
+// window that was hidden or on another Space stops redrawing, so refresh on a timer and on return
+async function autoOpen(){
+  if(current) return;
+  try{ const j = (await (await fetch("/api/jobs")).json()).find(x => x.running); if(j) open(j.id); }catch(e){}
+}
+function refreshScreen(){
+  listJobs().catch(() => {}); if(!current) autoOpen();
+  const lib = $("#library");
+  if(lib && !lib.hidden && libTab === "videos" && lib.querySelector(".libgrid, .empty")) loadLibrary().catch(() => {});
+  if(lib && !lib.hidden && libTab === "playlists" && !plBusy()) (plOpen ? openPlaylist(plOpen, true) : loadPlaylists()).catch(() => {});
+}
+setInterval(refreshScreen, 3000);
+document.addEventListener("visibilitychange", () => { if(!document.hidden) refreshScreen(); });
+window.addEventListener("focus", refreshScreen);
+if(!location.hash.startsWith("#job=")) autoOpen();
 </script>
 </body>
 </html>

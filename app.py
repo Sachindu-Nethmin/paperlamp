@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 ROOT = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
-from paperlamp import llm, memory, pipeline, tts  # noqa: E402
+from paperlamp import llm, memory, pipeline, playlist, tts  # noqa: E402
 
 # local defaults (voice paths etc.), not committed; the installed app keeps its own copy
 CONFIG = pipeline.HOME / "config.json" if (pipeline.HOME / "config.json").exists() else ROOT / "config.json"
@@ -163,6 +163,11 @@ class Handler(BaseHTTPRequestHandler):
                                        queued=RUNNER.position(m.group(1)), **extra))
         if p == "/api/library":
             return self.send_json(pipeline.library())
+        if p == "/api/playlists":
+            return self.send_json(playlist.summaries(RUNNER.current, RUNNER.position))
+        if m := re.match(r"^/api/playlists/([\w-]+)$", p):
+            v = playlist.view(m.group(1), RUNNER.current, RUNNER.position)
+            return self.send_json(v if v else {"error": "no such playlist"}, 200 if v else 404)
         if p == "/api/memory":
             return self.send_json(dict(memory.status(), current=RUNNER.current, queue=list(RUNNER.queue)))
         if m := re.match(r"^/jobs/([\w-]+)/(.+)$", p):
@@ -191,12 +196,65 @@ class Handler(BaseHTTPRequestHandler):
             depth = q.get("depth", [""])[0]
             if not src.state:
                 return self.send_json({"error": "no such job"}, 404)
-            if depth not in ("summary", "auto", "core", "read", "study", "full", "pass1", "pass2", "pass3"):
+            if depth not in ("summary", "auto", "core", "read", "deep", "study", "full", "pass1", "pass2", "pass3"):
                 return self.send_json({"error": "unknown kind of video"}, 400)
             if not (src.dir / "notes.json").exists():
                 return self.send_json({"error": "this job has no notes yet"}, 409)
             job = pipeline.Job.derive(src, depth)
             return self.send_json({"id": job.id, "queued": RUNNER.add(job.id)})
+        if p == "/api/playlists":                              # body: {name, depth, text, settings}
+            try:
+                b = json.loads(self.body() or b"{}")
+            except ValueError:
+                return self.send_json({"error": "send JSON"}, 400)
+            if b.get("depth", "deep") not in ("deep", "read", "auto", "core", "study", "pass1", "pass2", "pass3"):
+                return self.send_json({"error": "unknown kind of video"}, 400)
+            pl = playlist.create(b.get("name") or "New playlist", b.get("depth", "deep"),
+                                 {k: v for k, v in (b.get("settings") or {}).items() if k in pipeline.DEFAULTS},
+                                 b.get("description", ""))
+            added = playlist.add(pl["id"], b.get("text", ""), config()) if b.get("text") else []
+            return self.send_json({"id": pl["id"], "added": added})
+        if m := re.match(r"^/api/playlists/([\w-]+)/(add|make|order|rename|remove|delete|export|permission)$", p):
+            pid, action = m.groups()
+            if not playlist.get(pid):
+                return self.send_json({"error": "no such playlist"}, 404)
+            if action == "add":
+                added = playlist.add(pid, self.body().decode("utf-8", "replace"), config())
+                return self.send_json({"added": added} if added else {"error": "no new arXiv links or IDs found"},
+                                      200 if added else 400)
+            if action == "make":
+                started, skipped = playlist.make_all(pid, RUNNER.add, config(), RUNNER.current, RUNNER.position,
+                                                     only=q.get("arxiv", [""])[0] or None)
+                return self.send_json({"queued": started, "skipped": skipped})
+            if action == "order":
+                by = q.get("by", ["paper_date"])[0]
+                if by not in playlist.ORDERS:
+                    return self.send_json({"error": "unknown order"}, 400)
+                playlist.update(pid, lambda pl: pl.__setitem__("order", by))
+                return self.send_json({"ok": True})
+            if action == "rename":
+                name = self.body().decode("utf-8", "replace").strip()[:120]
+                playlist.update(pid, lambda pl: pl.__setitem__("name", name or pl["name"]))
+                return self.send_json({"ok": True})
+            if action == "remove":
+                playlist.remove(pid, q.get("arxiv", [""])[0])
+                return self.send_json({"ok": True})
+            if action == "delete":                           # the playlist only: jobs and videos stay
+                playlist.delete(pid)
+                return self.send_json({"ok": True})
+            if action == "permission":
+                note = self.body().decode("utf-8", "replace").strip()
+                if len(note) < 10:
+                    return self.send_json({"error": "say who gave permission and when (it goes into the description)"}, 400)
+                try:
+                    jid = playlist.permission(pid, q.get("arxiv", [""])[0], note, config())
+                except KeyError:
+                    return self.send_json({"error": "that paper is not ready in this playlist"}, 404)
+                return self.send_json({"ok": True, "job": jid})
+            root = config().get("export_dir") or str(pathlib.Path.home() / "Movies" / "PaperLamp")
+            res = playlist.export(pid, pathlib.Path(root) / "Playlists")
+            subprocess.run(["open", res["folder"]])
+            return self.send_json(res)
         if p == "/api/memory/free":
             if RUNNER.current:
                 return self.send_json({"error": "a video is being made; each step frees its memory when it "
@@ -307,6 +365,7 @@ def main():
     port = int(os.environ.get("PAPERLAMP_PORT", 8765))
     srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     signal.signal(signal.SIGTERM, shutdown)               # the app stops us this way: free memory first
+    playlist.resume(config())                             # papers a quit interrupted while downloading
     print(f"PaperLamp running at http://127.0.0.1:{port}  (Ctrl+C to stop)", flush=True)
     try:
         srv.serve_forever()
