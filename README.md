@@ -4,13 +4,59 @@ Turn a research paper PDF into a narrated, captioned explainer video, **entirely
 A small local model (via [Ollama](https://ollama.com)) writes the script, every number is
 checked against the paper, and a "document camera" moves across the real PDF pages while a
 highlighter sweeps along the sentence being explained, like a lamp held over the page. No
-internet connection or external AI service is used at
-any point.
+external AI service is used at any point. The only network use is optional: looking up a
+paper's license on arXiv when the PDF does not state it, and downloading arXiv papers for a
+playlist.
 
 _Formerly "paper2video". Renamed because two research projects already use that name
 (Show Lab's Paper2Video / PaperTalker, and the code of Preacher)._
 
 ![stages](docs/ui.png)
+
+## At a glance
+
+**Key features**
+
+- Drop in a PDF, pick a kind of video and a voice, and get an MP4 with burned-in captions, an
+  `.srt` file, a timestamped script, chapters and a ready YouTube thumbnail, title and description.
+- The paper's own pages on screen as a document camera, with a highlighter on the exact sentence
+  being explained and each figure framed while it is discussed.
+- Every number in the narration is checked against the paper by code; a sentence with a number
+  the paper does not contain is repaired or removed.
+- Kinds of video for different reading goals: Auto, Key sections, Target length, Whole paper (every
+  sentence), In depth (equations and terms), Study (built on learning research) and Keshav's three
+  reading passes.
+- A license gate: a video is made only when the paper's license allows adapted copies (CC BY
+  family, CC0) or the authors' permission is recorded; the description carries the credit.
+- Narration in the built-in macOS voice or in a clone of **your own** voice (Chatterbox), run locally.
+- A Mac app with a progress bar per stage, a Library of finished videos, playlists, and a memory
+  manager so the model and the voice clone never fill a 16 GB laptop together.
+
+**Tech stack**
+
+| Part | Technology |
+|---|---|
+| Desktop app | Swift (AppKit + WebKit) window around the local engine (`packaging/macos`) |
+| User interface | one HTML + JavaScript page (`ui/index.html`) |
+| Engine | Python 3 standard-library HTTP server and job queue (`app.py`), pipeline in `paperlamp/` |
+| PDF reading | Poppler: `pdftotext -bbox-layout`, `pdftohtml`, `pdftoppm`, `pdfinfo` |
+| Writing the script | Ollama running an open model locally: `ornith:9b` by default (chosen by `bench/`), `gemma4:E4B` to read equations off the page when there is no LaTeX source |
+| Voice | macOS `say`, or Chatterbox (Resemble AI, open source) voice cloning in its own Python env on Apple's GPU |
+| Frames, video and sound | Pillow and NumPy for frames; FFmpeg for H.264/AAC, loudness and captions |
+| Optional network | arXiv API: license lookup, and metadata, PDF and LaTeX source for playlists |
+| Tests | Python `unittest`, 134 tests (`tests/`) |
+
+**What works today**
+
+Nothing in this repository is mocked: there is no sample data, fake screen or placeholder output.
+Every video and number in the demo comes from a real run on a 16 GB MacBook.
+
+| Status | What |
+|---|---|
+| Fully working, used on real papers | The 10-stage pipeline, the number check, the license gate, YouTube packaging, the Library, the Mac app and memory manager, macOS and cloned voices. Finished videos of these kinds: **Auto** (a 52-page paper gave a 13:49 video; a 5-page paper gave 5:50 in 16 minutes end to end), **Target length**, **Every section**, **Reading pass 1** (three papers) and **Reading pass 2** |
+| Built and unit-tested, not yet run end to end | **Key sections**; **Whole paper** (its one long run stopped during narration when memory ran out, and can be resumed); **Reading pass 3**; **In depth**; playlists' **Make all** (a 10-paper playlist is imported, with one paper correctly blocked by its license, but its videos are not made yet) |
+| Not built yet | Windows and Linux support, a signed and notarized installer, any web or cloud version |
+| Known gap | The number check confirms a number appears in the paper, not that it belongs to the sentence on screen (a paper that reports 55.5% and 57.8% for the same thing passes either) |
 
 ## What it does
 
@@ -92,6 +138,45 @@ Four other kinds of explainer:
   sentences at a time and must keep their numbers; an explanation that changes a number falls back
   to the paper's own sentence. Long: about 5 minutes of video per page. (The older whole-paper
   explainer, every section summarised in order, is still `--every-section`.)
+- **In depth** (`--in-depth`, `paperlamp/deep.py`): the whole paper as a lecture, often hours long.
+  Every sentence is explained at length (what it says, how it follows, why it matters), and each
+  technical term is defined where the paper first uses it. Display equations are cut out of the page
+  layout line by line (they often sit inside a paragraph, which Whole paper used to skip entirely),
+  matched to the exact LaTeX in the paper's arXiv source (`paperlamp/texsrc.py`), then walked
+  through: what the paper uses it for, the equation read aloud, each symbol with its meaning while
+  that symbol is highlighted on the page, and the intuition. Without a LaTeX source a local vision
+  model (gemma4:E4B) reads the equation off the page image. The video opens with what it covers,
+  the key terms and the background the paper assumes; each main section opens with what it sets
+  out to do and ends with a recap; every figure and table is walked through from the text inside
+  it. `glossary.md` and `equations.md` are saved beside the video. Every model answer is cached in
+  the job folder (`deep_cache.json`), so a stopped job resumes without asking again.
+
+### Playlists
+
+The Library has **Playlists**: paste arXiv links or IDs, one per line, and the app reads each
+paper's title, every author, the date its first version appeared, the comment that often names
+the venue, and its license from arXiv, then downloads the PDF and (for In depth) the LaTeX source.
+A second link on a line is a PDF to use instead of arXiv's copy, for example a journal's
+open-access version. Papers are listed as a timeline, oldest first by default (or newest first,
+the order the videos were made, the order added). **Make all** makes a job per paper with the
+playlist's kind of video (reusing an existing job's parsed text, figures and title when the paper
+has one) and queues them in playlist order; one video is made at a time. A paper whose license
+does not allow a video waits for a permission note. **Export folder** puts every finished video,
+numbered in playlist order, with its thumbnail, captions, details and glossary, in one folder with
+the playlist's own title and description for YouTube.
+
+### Hours-long videos
+
+- The narration track is written to disk as it is assembled (about 2 GB per 3 hours of WAV is never
+  held in memory), and voice clips are hard-linked rather than copied.
+- Rendered clips are kept with a key of what they show, so a render stopped by a quit resumes.
+- Videos over 40 minutes, and every In depth video, drop the slow camera drift: a settled frame is
+  drawn once and repeated, which renders faster and compresses to a fraction; they are encoded at
+  CRF 23 and keep their narration as AAC (`narration.m4a`) instead of WAV.
+- Chapter times switch to H:MM:SS past an hour, chapters shorter than YouTube's 10 seconds merge into
+  the next, and a description over 5,000 characters keeps the main sections only.
+- Voice and render stages stop with a clear message when the disk is too full for them.
+- YouTube needs a verified channel for videos over 15 minutes, and allows up to 12 hours.
 
 Every stage has its own progress bar in the web UI, writes its result into the job folder,
 and can be resumed or re-run (for example after editing `script.json`).
@@ -169,6 +254,7 @@ python3 -m paperlamp.cli paper.pdf --minutes 8 --voice say
 python3 -m paperlamp.cli paper.pdf --auto-length --voice say
 python3 -m paperlamp.cli paper.pdf --key-sections --voice chatterbox
 python3 -m paperlamp.cli paper.pdf --whole-paper --voice chatterbox
+python3 -m paperlamp.cli paper.pdf --in-depth --arxiv 2604.00594 --voice chatterbox
 python3 -m paperlamp.cli paper.pdf --study --voice chatterbox
 python3 -m paperlamp.cli --resume <job-id> --from verify     # re-run after editing script.json
 ```
@@ -277,6 +363,9 @@ paperlamp/tts.py        say / Chatterbox backends                  paperlamp/voi
 paperlamp/assemble.py   timeline, audio, captions, final mux       paperlamp/pipeline.py stages, state, resume
 paperlamp/compare.py    script comparison metrics                  paperlamp/quiz.py     self-check questions
 paperlamp/passes.py     reading-pass videos (Keshav)               paperlamp/memory.py   memory status and cleanup
+paperlamp/reader.py     whole paper, sentence by sentence          paperlamp/deep.py     in-depth videos
+paperlamp/texsrc.py     equations from the LaTeX source            paperlamp/arxiv.py    arXiv details, PDF, source
+paperlamp/playlist.py   playlists in the Library
 packaging/              the Mac app (Swift window, icon, build)
 bench/                  model benchmark, exports                   tests/                unit tests
 ```
