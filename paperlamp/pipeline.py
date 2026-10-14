@@ -27,7 +27,10 @@ DEFAULTS = dict(model=llm.DEFAULT_MODEL, minutes=8, voice="say", say_voice="", s
 EXPORTED = [("video", "out/video.mp4", "video.mp4"), ("captions", "out/captions.srt", "captions.srt"),
             ("captions_burned_in", "out/captions.ass", "captions.ass"),
             ("description", "out/description.txt", "description.txt"), ("script", "out/script.md", "script.md"),
-            ("quiz", "out/quiz.md", "quiz.md"), ("narration", "out/narration.wav", "narration.wav")]
+            ("quiz", "out/quiz.md", "quiz.md"), ("glossary", "out/glossary.md", "glossary.md"),
+            ("equations", "out/equations.md", "equations.md"), ("narration", "out/narration.wav", "narration.wav"),
+            ("narration_m4a", "out/narration.m4a", "narration.m4a")]
+LONG_FORM = 40 * 60             # seconds: longer videos are encoded for size (assemble.build) and sized for disk
 
 
 def number_of(name):
@@ -63,6 +66,20 @@ def safe_name(meta, limit=90):
     if len(stem) > limit:                                 # keep the venue tail: it says which version this is
         stem = stem[:max(1, limit - len(tail) - 4)].rsplit(" ", 1)[0] + "..." + (" " + tail if tail else "")
     return stem or "Untitled"
+
+
+def arxiv_venue(meta, ax):
+    """A published paper made from its arXiv copy says only "arXiv" on page 1; arXiv's own comment
+    or journal reference often names where it appeared ("To appear in ESEM 2026", "ICLR 2024").
+    That venue is used when the paper itself named none but arXiv. Never guessed beyond it."""
+    from .arxiv import venue_hint
+    hint = venue_hint((ax or {}).get("comment", ""), (ax or {}).get("journal_ref", ""))
+    if not hint or (meta.get("venue") and meta["venue"] != "arXiv preprint"):
+        return meta
+    year = re.search(r"\b(?:19|20)\d\d\b", hint)
+    meta = dict(meta, venue=hint, **({"year": year.group(0)} if year else {}))
+    meta["checks"] = list(meta.get("checks") or []) + [f"venue set from arXiv's comment: {hint!r}"]
+    return meta
 
 
 def default_voice(settings):
@@ -262,7 +279,8 @@ class Job:
         cb(1, 1, f"{len(figs)} figures and tables located")
 
     def stage_meta(self, cb):
-        self.write("meta.json", analyze.paper_meta(self.read("doc.json"), self.state["settings"]["model"], cb))
+        meta = analyze.paper_meta(self.read("doc.json"), self.state["settings"]["model"], cb)
+        self.write("meta.json", arxiv_venue(meta, self.state.get("arxiv")))
 
     def stage_notes(self, cb):
         known = {n["title"]: n for n in self.read("notes.json")} if (self.dir / "notes.json").exists() else {}
@@ -293,7 +311,17 @@ class Job:
         s = self.state["settings"]
         t0 = time.time()
         depth = s.get("depth", "summary")
-        if depth == "read":                         # the whole paper, every sentence explained in order
+        if depth == "deep":                         # every sentence in depth, with its equations and terms
+            from . import deep
+            doc = self.read("doc.json")
+            ax = doc.get("arxiv") or (self.state.get("arxiv") or {}).get("arxiv") or ""
+            installed = llm.available()
+            sc = deep.write(self.dir / "paper.pdf", self.read("meta.json"), self.read("figs.json"),
+                            pdf.headings(self.dir / "paper.pdf"), s["model"], cb,
+                            appendix=bool(s.get("read_appendix")), job_dir=self.dir, arxiv_id=ax,
+                            known=verify.paper_numbers((self.dir / "paper.txt").read_text()),
+                            vision=llm.vision_model(installed, s["model"]) if installed else "")
+        elif depth == "read":                       # the whole paper, every sentence explained in order
             from . import reader
             sc = reader.write(self.dir / "paper.pdf", self.read("meta.json"), self.read("figs.json"),
                               pdf.headings(self.dir / "paper.pdf"), s["model"], cb,
@@ -401,24 +429,39 @@ class Job:
                                               highlight=[found[n] for n in s["authors"] if n in found])
         self.write("script.json", sc)
 
+    def disk_check(self, stage):
+        """Stop before a long stage that would fill the disk, with what to do about it: an hours-long
+        video needs several GB for its voice clips and its rendered segments."""
+        words = sum(len(x["spoken"].split()) for x in self.sentences())
+        minutes = words / 150                       # narration speed of both voices, roughly
+        need = minutes * (0.012 if stage == "voice" else (0.03 if minutes * 60 > LONG_FORM else 0.12)) + 1.0
+        free = shutil.disk_usage(self.dir).free / 1e9
+        if free < need:
+            raise RuntimeError(f"Not enough free disk space for {stage}: about {need:.1f} GB is needed for a "
+                               f"{minutes:.0f}-minute video and {free:.1f} GB is free. Free some space, then retry.")
+
     def stage_voice(self, cb):
         self.free_model_memory()                    # e.g. a resumed job: the voice model needs that memory
+        self.disk_check("voice")
         items = [(x["id"], x["spoken"]) for x in self.sentences()]
         durs = tts.narrate(items, self.dir / "audio", self.state["settings"], cb)
         self.write("durations.json", durs)
 
     def stage_render(self, cb):
         s = self.state["settings"]
+        self.disk_check("render")
         sents = self.sentences()
         durs = self.read("durations.json")
         meta = self.read("script.json").get("meta") or {}
         pages = self.read("doc.json")["pages"]
-        final, total = assemble.build(self.dir, sents, durs, meta, pages, cb)
+        final, total = assemble.build(self.dir, sents, durs, meta, pages, cb,
+                                      still=s.get("depth") == "deep" or None, long_form=LONG_FORM)
         self.write_docs(sents, meta)
+        has = lambda rel: rel if (self.dir / rel).exists() else None
         self.state["outputs"] = dict(video="out/video.mp4", captions="out/captions.srt",
                                      description="out/description.txt", script="out/script.md",
-                                     quiz="out/quiz.md" if (self.dir / "out/quiz.md").exists() else None,
-                                     seconds=total)
+                                     quiz=has("out/quiz.md"), glossary=has("out/glossary.md"),
+                                     equations=has("out/equations.md"), seconds=total)
         self.package_youtube()
         self.export()
 
@@ -560,14 +603,17 @@ class Job:
         return kinds | {(self.state.get("settings") or {}).get("depth", "summary")}
 
     def write_docs(self, sents, meta):
-        tl = self.read("timeline.json")["rows"]
-        mmss = lambda t: f"{int(t // 60)}:{int(t % 60):02d}"
+        timeline = self.read("timeline.json")
+        tl = timeline["rows"]
+        mmss = clock(timeline.get("total") or (tl[-1]["end"] if tl else 0))
+        sc = self.read("script.json")
+        level = {c["title"]: c["key"].count(".") for c in sc["chapters"]}       # "s3.1" is under "s3"
         chapters, seen = [], set()
         for r in tl:
             if r["chapter"] not in seen:
                 seen.add(r["chapter"])
-                chapters.append(f"{mmss(0 if not chapters else r['seg'][0])} {r['chapter']}")
-        sc = self.read("script.json")
+                chapters.append((0.0 if not chapters else r["seg"][0], r["chapter"], level.get(r["chapter"], 0)))
+        total = timeline.get("total") or (tl[-1]["end"] if tl else 0)
         v = sc.get("verification", {})
         src = (f"Script written offline by the local model {sc.get('model', '')} (Ollama)"
                if sc.get("source") == "ollama" else f"Script: {sc.get('source', 'imported')}")
@@ -588,13 +634,26 @@ class Job:
         if link:
             cite += ("" if cite.endswith((".", "?", "!")) else ".") + " " + link
         one = str(meta.get("one_line") or "").strip()
-        desc = (f"{one[:1].upper() + one[1:]}\n\nCHAPTERS\n" + "\n".join(chapters) +
-                f"\n\nPAPER\n{cite}\n\nLICENSE AND WHAT YOU MAY DO\n" + (
-                    f"Published with permission: {perm}\n" if (perm := (self.state["settings"].get("permission") or "").strip())
-                    else "") + pdf.license_block(lic, ax) +
-                self.retest_block(sc) +
-                f"\n\nHOW THIS WAS MADE\n{src}. Every number in the narration was checked against the paper text "
-                f"({v.get('ok', 0)} sentences verified, {v.get('fixed', 0)} repaired, {v.get('dropped', 0)} removed).\n")
+        terms = sc.get("glossary") or []
+
+        def compose(rows, note=""):
+            return (f"{one[:1].upper() + one[1:]}\n\nCHAPTERS\n" + "\n".join(f"{mmss(t)} {c}" for t, c, _ in
+                                                                         youtube_chapters(rows, total)) + note +
+                    (f"\n\nKEY TERMS\n" + "; ".join(t["term"] for t in terms[:25]) + ". The full glossary is "
+                     "in glossary.md beside the video." if terms else "") +
+                    f"\n\nPAPER\n{cite}\n\nLICENSE AND WHAT YOU MAY DO\n" + (
+                        f"Published with permission: {perm}\n" if (perm := (self.state["settings"].get("permission") or "").strip())
+                        else "") + pdf.license_block(lic, ax) +
+                    self.retest_block(sc) +
+                    f"\n\nHOW THIS WAS MADE\n{src}. Every number in the narration was checked against the paper text "
+                    f"({v.get('ok', 0)} sentences verified, {v.get('fixed', 0)} repaired, {v.get('dropped', 0)} removed).\n")
+        desc = compose(chapters)
+        if len(desc) > YT_DESCRIPTION:              # YouTube's limit: keep the main sections as chapters
+            rows = [c for c in chapters if c[2] == 0]
+            desc = compose(rows, "\n(Main sections only; script.md lists every subsection.)")
+            while len(desc) > YT_DESCRIPTION and len(rows) > 3:
+                rows = rows[:-1]
+                desc = compose(rows, "\n(Later sections are listed in script.md.)")
         (self.dir / "out/description.txt").write_text(desc, encoding="utf-8")
         md = [f"# {meta.get('title', '')}", "", f"_{src}_", ""]
         cur = None
@@ -605,10 +664,39 @@ class Job:
         (self.dir / "out/script.md").write_text("\n".join(md) + "\n", encoding="utf-8")
 
 
+YT_DESCRIPTION = 4900             # YouTube allows 5,000 characters
+
+
+def youtube_chapters(rows, total, shortest=10.0):
+    """Chapters YouTube will accept: it ignores every chapter of a video when one is shorter than
+    10 seconds, so a short one (a heading and its one-line opening) is merged into the next."""
+    out = []
+    for k, (start, title, lev) in enumerate(rows):
+        end = rows[k + 1][0] if k + 1 < len(rows) else total
+        if out and out[-1][3]:                    # the previous one was too short: this one starts there
+            prev = out.pop()
+            start = prev[0]
+            if prev[2] < lev:                       # a main section's heading names its first subsection's part
+                title, lev = prev[1], prev[2]
+        out.append([start, title, lev, end - start < shortest and k + 1 < len(rows)])
+    if len(out) > 1 and out[-1][0] and total - out[-1][0] < shortest:     # a short last one joins the one before
+        out.pop()
+    if out:
+        out[0][0] = 0.0
+    return [(a, t, lev) for a, t, lev, _ in out]
+
+
+def clock(total):
+    """Chapter times as YouTube reads them: "12:05", or "1:02:05" in a video of an hour or more."""
+    if total >= 3600:
+        return lambda t: f"{int(t // 3600)}:{int(t % 3600 // 60):02d}:{int(t % 60):02d}"
+    return lambda t: f"{int(t // 60)}:{int(t % 60):02d}"
+
+
 def select_chunks(secs, depth):
     """The sections a kind of video needs the model to read. Acknowledgements etc. never;
     related work and appendices only for the whole-paper and pass-3 videos."""
-    if depth == "read":                             # explained sentence by sentence: no notes needed
+    if depth in ("read", "deep"):                   # explained sentence by sentence: no notes needed
         return []
     whole = depth in ("full", "pass3")
     skip = script.skip_re(depth)

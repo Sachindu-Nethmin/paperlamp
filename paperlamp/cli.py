@@ -1,6 +1,6 @@
 """Command-line runner (same pipeline as the web UI).
 
-    python3 -m paperlamp.cli paper.pdf [--minutes 8 | --auto-length | --key-sections | --study | --whole-paper [--with-appendix] | --pass 1|2|3] [--model ornith:9b]
+    python3 -m paperlamp.cli paper.pdf [--minutes 8 | --auto-length | --key-sections | --study | --whole-paper | --in-depth [--with-appendix] | --pass 1|2|3] [--model ornith:9b]
                                  [--voice say|chatterbox] [--say-voice Samantha]
                                  [--chatterbox-python PY --reference WAV] [--quiz N]
                                  [--import script.json] [--resume JOB_ID --from STAGE]
@@ -22,7 +22,11 @@ def main():
     ap.add_argument("--whole-paper", action="store_true",
                     help="every sentence of the paper explained in order, the highlighter on that sentence "
                          "(ignores --minutes; long: about 5 minutes of video per page)")
-    ap.add_argument("--with-appendix", action="store_true", help="--whole-paper also goes through the appendix")
+    ap.add_argument("--in-depth", action="store_true",
+                    help="every sentence explained at length, with each equation taken apart symbol by symbol "
+                         "(from the arXiv LaTeX source) and each technical term defined; often hours long")
+    ap.add_argument("--arxiv", default="", help="the paper's arXiv ID, if the PDF does not print it (for --in-depth)")
+    ap.add_argument("--with-appendix", action="store_true", help="--whole-paper and --in-depth also go through the appendix")
     ap.add_argument("--study", action="store_true",
                     help="a study video built on learning research: key terms first, a question before each "
                          "segment and its answer after, recall questions at the end")
@@ -55,13 +59,17 @@ def main():
         settings = dict(minutes=a.minutes, model=a.model, say_voice=a.say_voice,
                         chatterbox_python=a.chatterbox_python, voice_reference=a.reference,
                         script_source="import" if a.script else "ollama", quiz_in_video=a.quiz,
-                        depth=f"pass{a.read_pass}" if a.read_pass else "study" if a.study else "read" if a.whole_paper
+                        depth=f"pass{a.read_pass}" if a.read_pass else "study" if a.study else "deep" if a.in_depth
+                        else "read" if a.whole_paper
                         else "full" if a.every_section else "core" if a.key_sections
                         else "auto" if a.auto_length else "summary",
                         read_appendix=int(a.with_appendix), permission=a.permission)
         if a.voice:
             settings["voice"] = a.voice
         job = pipeline.Job.create(pathlib.Path(a.pdf).read_bytes(), pathlib.Path(a.pdf).name, settings)
+        if a.arxiv:
+            job.state["arxiv"] = dict(arxiv=a.arxiv)
+            job.save(force=True)
         if a.script:
             job.write("script_import.json", json.loads(pathlib.Path(a.script).read_text()))
     print(f"job {job.id}  →  {job.dir}")

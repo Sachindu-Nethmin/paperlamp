@@ -22,11 +22,15 @@ WORD = re.compile(r'<word xMin="([\d.]+)" yMin="([\d.]+)" xMax="([\d.]+)" yMax="
 BOX = r'xMin="([\d.]+)" yMin="([\d.]+)" xMax="([\d.]+)" yMax="([\d.]+)"'
 CAPTION = re.compile(r"^(Figure|Fig\.|Table)\s*(\d+|[A-Z]\d*)\s*[:.]", re.I)
 REFS = re.compile(r"^(references|bibliography)$")
-APPENDIX = re.compile(r"^(appendix|appendices|supplementarymaterial)")
+APPENDIX = re.compile(r"^(appendix|appendices|supplementarymaterial|neuripspaperchecklist|paperchecklist|"
+                      r"reproducibilitychecklist|checklist$)")
 # front-matter blocks that are not sentences: keyword lists, the ACM/IEEE copyright box
 META = re.compile(r"^(ccsconcepts|keywords|indexterms|acmreferenceformat|additionalkeywords)")
 COPYRIGHT = re.compile(r"permission to make digital|acm isbn|©|copyright held|rights licensed|"
                        r"https?://doi\.org/10\.\d+/\S*$", re.I)
+# the authors' footnotes on the first pages: equal contribution, who to write to, where they work
+FOOTNOTE = re.compile(r"[\w.}+-]@[\w-]+\.[a-z]{2,}|^\s*[∗*†‡§¶]|equal contribution|correspondence to|corresponding author|"
+                      r"primary advising|work done (while|during)|authors[’'] (contact|addresses)", re.I)
 BATCH = 8                       # sentences the local model explains in one go
 
 
@@ -71,6 +75,120 @@ def reading_order(blocks, width):
 
 def block_text(b):
     return " ".join(w[4] for ln in b["lines"] for w in ln["words"])
+
+
+GREEK_CH = set("αβγδεζηθικλμνξπρστυφχψωΓΔΘΛΞΠΣΦΨΩϵϑϕ")
+MATH_OPS = set("=∑∏∫≤≥≠≈∈∉⊂⊆∪∩±×·→←↦∀∃∂∇∞∝∼⊤∥‖√⋅")
+MATH_WORDS = {"arg", "max", "min", "log", "exp", "sin", "cos", "tanh", "softmax", "sigmoid", "where", "subject",
+              "s.t.", "for", "and", "if", "otherwise", "with"}
+EQ_NUM = re.compile(r"\(\s*[A-Z]?\d{1,3}(?:\.\d{1,3})?[a-z]?\s*\)")
+CODE = re.compile(r"[A-Za-z]{2,}_[A-Za-z_]{2,}|==|!=|\+=|←|:=\s*\w+\(|\b(def|return|elif|lambda|import|print)\b|"
+                  r"^\s*\d{0,3}:?\s*(if|else|elif|for ?each|while|repeat|until|return|end)\b|\b(then|do)\s*$|"
+                  r"^\s*\d{1,4}:|\w_\s|\w\.\w+\s*\[|\b[A-Z][a-z]+[A-Z]\w*\(")
+
+
+def _line_text(ln):
+    return " ".join(w[4] for w in ln["words"])
+
+
+def _mathish(text):
+    """A typeset formula, not prose with a symbol in it: an operator, mostly one- or two-character
+    tokens (variables, subscripts, operators), and hardly any real words."""
+    toks = text.split()
+    if not toks or not any(c in MATH_OPS for c in text) or re.search(r"https?://|www\.|\w=\w+&", text):
+        return False
+    if CODE.search(text) or re.search(r"[a-z]-$", text.rstrip()):   # code, pseudo-code, or prose wrapped mid-word
+        return False
+    short = sum(1 for t in toks if len(t) <= 2 or any(c in GREEK_CH or c in MATH_OPS for c in t))
+    real = sum(1 for t in toks if re.fullmatch(r"[A-Za-z][a-z]{3,}[.,;:]?", t) and t.lower().strip(".,;:") not in MATH_WORDS)
+    return short >= 0.5 * len(toks) and real <= 3
+
+
+def _union_lines(lines):
+    return [min(l["box"][0] for l in lines), min(l["box"][1] for l in lines),
+            max(l["box"][2] for l in lines), max(l["box"][3] for l in lines)]
+
+
+def split_math(pages):
+    """Display equations as blocks of their own. Poppler often puts an equation inside the
+    paragraph around it, with its subscripts and its number "(3)" as separate lines or blocks;
+    then the whole paragraph looks like non-prose and was skipped. Each block is split into its
+    prose lines and its formula lines; a formula block gets eq=True, the equation numbers beside
+    it (nums) and the stray subscript fragments inside its box. Works in place, page by page."""
+    for pg in pages:
+        lines = [ln for b in pg["blocks"] for ln in b["lines"]]
+        starts = Counter(round(ln["box"][0] / 3) for ln in lines)
+        margins = [k * 3 for k, c in starts.items() if c >= 4]
+        widths = sorted(ln["box"][2] - ln["box"][0] for ln in lines if any(abs(ln["box"][0] - m) <= 4 for m in margins))
+        full = widths[int(len(widths) * 0.75)] if widths else pg["w"] * 0.7
+        at_margin = lambda ln: any(abs(ln["box"][0] - m) <= 4 for m in margins)
+
+        def kind(ln):
+            t = _line_text(ln).strip()
+            if EQ_NUM.fullmatch(t):
+                return "N"
+            if len(t.replace(" ", "")) <= 3 and ln["box"][3] - ln["box"][1] <= 10:
+                return "T"                                  # a subscript or superscript on its own line
+            if _mathish(t) and (not at_margin(ln) or ln["box"][2] - ln["box"][0] < 0.75 * full):
+                return "M"
+            return "P"
+        out = []
+        for b in pg["blocks"]:
+            ks = [kind(ln) for ln in b["lines"]]
+            if "M" not in ks:
+                out.append(b)
+                continue
+            # a run of formula lines, with the numbers and fragments touching it, is one equation
+            runs, cur = [], None
+            for ln, k in zip(b["lines"], ks):
+                tag = "eq" if k in ("M", "N", "T") else "text"
+                if cur and cur["tag"] == tag:
+                    cur["lines"].append(ln); cur["kinds"].append(k)
+                else:
+                    cur = dict(tag=tag, lines=[ln], kinds=[k]); runs.append(cur)
+            for r in runs:
+                if r["tag"] == "eq" and "M" not in r["kinds"]:
+                    r["tag"] = "text"                            # a lone "(2)" or fragment inside prose
+                box = _union_lines(r["lines"])
+                if r["tag"] == "eq":
+                    out.append(dict(box=box, lines=[ln for ln, k in zip(r["lines"], r["kinds"]) if k != "N"],
+                                    eq=True, nums=[_line_text(ln).strip() for ln, k in zip(r["lines"], r["kinds"]) if k == "N"],
+                                    all_lines=r["lines"]))
+                else:
+                    out.append(dict(box=box, lines=r["lines"]))
+        # numbers and fragments that poppler put in blocks of their own join the equation they belong to
+        eqs = [b for b in out if b.get("eq")]
+        keep = []
+        for b in out:
+            t = block_text(b).strip()
+            host = None
+            if not b.get("eq") and eqs and (EQ_NUM.fullmatch(t) or (len(t.replace(" ", "")) <= 3 and len(b["lines"]) == 1)):
+                for e in eqs:
+                    y_hit = b["box"][1] <= e["box"][3] + 6 and b["box"][3] >= e["box"][1] - 6
+                    x_hit = b["box"][0] >= e["box"][0] - 6 and (EQ_NUM.fullmatch(t) or b["box"][2] <= e["box"][2] + 6)
+                    if y_hit and x_hit:
+                        host = e
+                        break
+            if host is None:
+                keep.append(b)
+                continue
+            if EQ_NUM.fullmatch(t):
+                host["nums"].append(t)
+            host["all_lines"] = host.get("all_lines", host["lines"]) + b["lines"]
+            host["box"] = _union_lines(host["all_lines"])
+        # rows of one equation that poppler gave separate blocks become one equation again
+        merged = []
+        for b in keep:
+            p = merged[-1] if merged else None
+            if p is not None and b.get("eq") and p.get("eq") and 0 <= b["box"][1] - p["box"][3] <= 8 \
+                    and b["box"][0] < p["box"][2] and b["box"][2] > p["box"][0]:
+                p["lines"] += b["lines"]; p["nums"] += b["nums"]
+                p["all_lines"] = p.get("all_lines", []) + b.get("all_lines", b["lines"])
+                p["box"] = _union_lines(p["all_lines"])
+                continue
+            merged.append(b)
+        pg["blocks"] = merged
+    return pages
 
 
 def _inside(b, box, pad=2):
@@ -123,6 +241,8 @@ def classify(pages, figs, heads):
                 kind = "caption"
             elif any(_inside(b, f["box"]) for f in pfigs):
                 kind = "skip"                                      # inside a figure or table
+            elif pg["page"] <= 2 and b["box"][1] > 0.6 * pg["h"] and FOOTNOTE.search(t):
+                kind = "skip"                                      # the authors' footnote, not the paper's text
             elif REFS.match(sq):
                 state, kind = "refs", "skip"
             elif META.match(sq) or COPYRIGHT.search(t) or (after_meta and len(b["lines"]) <= 3):
@@ -135,7 +255,7 @@ def classify(pages, figs, heads):
             elif state == "refs" or not _is_prose(t):
                 kind = "skip"
             after_meta = bool(META.fullmatch(sq))                 # "Keywords" alone: its list follows
-            if sq.startswith("abstract"):
+            if sq.startswith("abstract") and state == "front":     # not "Abstract ..." in a checklist
                 kind, state = ("text" if len(sq) > 12 else "skip"), "abstract"
             elif state == "front" and kind == "text":
                 kind = "title" if not title_done else "authors"
@@ -177,7 +297,7 @@ def items(blocks, appendix=False):
     for bi, b in enumerate(blocks):
         if b["part"] == "appendix" and not appendix:
             continue
-        if b["kind"] in ("heading", "caption"):
+        if b["kind"] in ("heading", "caption", "equation"):
             flush(); out.append((b["kind"], b)); continue
         if b["kind"] not in ("text",):
             continue
@@ -235,7 +355,7 @@ def explain(batch, section, paper, model, before=""):
 
 def write(pdf_path, meta, figs, heads, model, progress, appendix=False):
     """The whole-paper script: chapters of explanations, each with its exact source spot."""
-    blocks = classify(layout(pdf_path), figs, heads)
+    blocks = classify(split_math(layout(pdf_path)), figs, heads)
     stream = items(blocks, appendix)
     body_text = " ".join(block_text(b) for b in blocks if b["kind"] == "text")
     figs_by = {f["label"]: f for f in figs}

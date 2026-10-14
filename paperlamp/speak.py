@@ -114,4 +114,17 @@ def to_spoken(text, terms=()):
     t = re.sub(r"(\d[\d,]*(?:\.\d+)?)\s*%", lambda m: number_words(m.group(1)) + " percent", t)
     t = re.sub(r"\d[\d,]*\.\d+|\d{1,3}(?:,\d{3})+|\d+", lambda m: number_words(m.group()), t)
     t = t.replace("≥", "at least ").replace("×", " times ").replace("→", " to ")
+    t = re.sub("[" + "".join(MATH_SAY) + "]", lambda m: f" {MATH_SAY[m.group(0)]} ", t)
     return re.sub(r"\s+", " ", t).strip()
+
+
+# Greek letters and math signs by name, for a paper's own sentence read aloud (the in-depth
+# explanations already say them in words)
+MATH_SAY = {"α": "alpha", "β": "beta", "γ": "gamma", "δ": "delta", "ε": "epsilon", "ϵ": "epsilon", "ζ": "zeta",
+            "η": "eta", "θ": "theta", "ϑ": "theta", "ι": "iota", "κ": "kappa", "λ": "lambda", "μ": "mu", "ν": "nu",
+            "ξ": "xi", "π": "pi", "ρ": "rho", "σ": "sigma", "τ": "tau", "υ": "upsilon", "φ": "phi", "ϕ": "phi",
+            "χ": "chi", "ψ": "psi", "ω": "omega", "Γ": "Gamma", "Δ": "Delta", "Θ": "Theta", "Λ": "Lambda",
+            "Σ": "Sigma", "Φ": "Phi", "Ψ": "Psi", "Ω": "Omega", "≤": "at most", "≠": "is not equal to",
+            "≈": "approximately", "∈": "in", "∉": "not in", "±": "plus or minus", "−": "minus", "∑": "the sum of",
+            "∏": "the product of", "∞": "infinity", "∂": "partial", "∇": "gradient of", "√": "the square root of",
+            "∝": "proportional to", "∀": "for all", "∃": "there exists", "⊤": "transpose"}

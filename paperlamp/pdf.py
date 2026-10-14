@@ -301,7 +301,7 @@ def page_image(pdf, page, cache):
     pathlib.Path(cache).mkdir(parents=True, exist_ok=True)
     out = pathlib.Path(cache) / f"p{page:03d}.png"
     if not out.exists():
-        subprocess.run(["pdftoppm", "-r", str(DPI), "-png", "-singlefile", "-f", str(page), "-l", str(page),
+        subprocess.run(["pdftoppm", "-r", str(DPI), "-png", "-singlefile", "-hide-annotations", "-f", str(page), "-l", str(page),
                         str(pdf), str(out.with_suffix(""))], check=True)
     return Image.open(out)
 
@@ -561,7 +561,20 @@ def license_hint(text):
     only). Returns the short id used by LICENSE_NOTICE, or "" when the paper says nothing
     that grants reuse — which is the common case for arXiv's default license and for
     papers published by a society, and needs permission before a video is published."""
-    t = text[:20000]
+    found = _license_in(text[:20000])
+    if not found:                       # journals often print the notice at the end, before the references
+        m = OPEN_ACCESS.search(text)
+        if m:
+            found = _license_in(text[m.start(): m.start() + 1500])
+    return found
+
+
+# the sentence open-access journals (Springer, Elsevier, PLOS, MDPI, ...) print about the article's own license
+OPEN_ACCESS = re.compile(r"(this|the) (article|work|paper|chapter) is (licensed|distributed|published) under (a|the) "
+                         r"(terms of the )?Creative\s+Commons", re.I)
+
+
+def _license_in(t):
     if re.search(r"creativecommons\.org/publicdomain/zero|\bCC0\b", t, re.I):
         return "CC0 1.0"
     m = re.search(r"creativecommons\.org/licenses/([a-z\-]+)/([\d.]+)", t, re.I)
@@ -633,11 +646,16 @@ def arxiv_license(aid):
     open license, and None if the page could not be reached (so the answer is not kept). Never guesses."""
     if not aid:
         return ""
-    try:
-        req = urllib.request.Request(f"https://arxiv.org/abs/{aid}",
-                                     headers={"User-Agent": "paperlamp/1.0 (license check)"})
-        page = urllib.request.urlopen(req, timeout=8).read().decode("utf-8", "replace")
-    except Exception:
+    page = None
+    for wait in (20, 30):                          # the network may go through a slow proxy
+        try:
+            req = urllib.request.Request(f"https://arxiv.org/abs/{aid}",
+                                         headers={"User-Agent": "paperlamp/1.0 (license check)"})
+            page = urllib.request.urlopen(req, timeout=wait).read().decode("utf-8", "replace")
+            break
+        except Exception:
+            continue
+    if page is None:
         return None
     m = re.search(r'abs-license"?>\s*<a href="([^"]+)"', page, re.I)
     if not m:

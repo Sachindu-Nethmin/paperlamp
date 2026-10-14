@@ -34,6 +34,26 @@ def best_model(installed, fallback=DEFAULT_MODEL):
     return fallback if fallback in installed or not installed else installed[0]
 
 
+def capabilities(model):
+    """What an installed model can do, e.g. ["completion", "vision"]; [] if unknown."""
+    try:
+        req = urllib.request.Request(OLLAMA + "/api/show", json.dumps({"model": model}).encode(),
+                                     {"Content-Type": "application/json"})
+        with _open(req, timeout=10) as r:
+            return json.load(r).get("capabilities") or []
+    except Exception:
+        return []
+
+
+def vision_model(installed, prefer=""):
+    """An installed model that reads images (the chosen one first), or "" if there is none.
+    Used to read an equation off the page when the paper's LaTeX source is not available."""
+    for m in ([prefer] if prefer else []) + [m for m in BENCH_ORDER if m in installed] + list(installed):
+        if m and m in installed and "vision" in capabilities(m):
+            return m
+    return ""
+
+
 def loaded():
     """Models Ollama currently holds in memory: [(name, bytes)]."""
     try:
@@ -76,11 +96,15 @@ def skill(name, **values):
 
 
 def chat(prompt, model=DEFAULT_MODEL, want_json=True, ctx=8192, max_tokens=2048, temperature=0.2,
-         on_token=None, retries=2):
-    """One user message → reply text (or parsed JSON). on_token(n) reports progress."""
+         on_token=None, retries=2, images=None):
+    """One user message → reply text (or parsed JSON). on_token(n) reports progress.
+    images: base64 PNGs for a model that can see (see vision_model)."""
+    msg = {"role": "user", "content": prompt}
+    if images:
+        msg["images"] = list(images)
     body = {"model": model, "stream": True, "think": False, "keep_alive": "10m",
             "options": {"temperature": temperature, "num_ctx": ctx, "num_predict": max_tokens},
-            "messages": [{"role": "user", "content": prompt}]}
+            "messages": [msg]}
     if want_json:
         body["format"] = "json"
     last_err = None
