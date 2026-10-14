@@ -46,6 +46,10 @@ _Formerly "paper2video". Renamed because two research projects already use that 
 | Optional network | arXiv API: license lookup, and metadata, PDF and LaTeX source for playlists |
 | Tests | Python `unittest`, 134 tests (`tests/`) |
 
+**Architecture**
+
+![How PaperLamp fits together: the Mac app, the local engine, the 10-stage pipeline, the local model and the checks on it](docs/architecture.png)
+
 **What works today**
 
 Nothing in this repository is mocked: there is no sample data, fake screen or placeholder output.
